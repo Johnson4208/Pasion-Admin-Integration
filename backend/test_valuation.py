@@ -3,6 +3,7 @@ import unittest
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from unittest.mock import patch
 import valuation as v
 
@@ -13,7 +14,7 @@ class ValuationTests(unittest.TestCase):
         self.db.execute('PRAGMA foreign_keys=ON')
         self.db.execute('CREATE TABLE accounts(email TEXT PRIMARY KEY)')
         self.db.executemany('INSERT INTO accounts VALUES (?)',[('one@example.com',),('two@example.com',)])
-        self.today=date.today()
+        self.today=datetime.now(ZoneInfo('Asia/Shanghai')).date()
         end=date(self.today.year-1,12,31)
         self.base={'version':1,'company':{'ticker':'TEST','name':'Test'},'period':'FY','period_end':end.isoformat(),'metrics':{}}
         amounts={'revenue':100,'ebit':20,'ebitda':26,'operating_nwc':10,'diluted_shares':10,'net_income_common':12,'debt':10,'cash':5,'restricted_cash':0,'lease_debt':0,'eps':1.2,'dividend_per_share':.5}
