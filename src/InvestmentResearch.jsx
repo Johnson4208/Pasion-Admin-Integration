@@ -52,17 +52,18 @@ function ValueModelCard({model,onDetails,t}){
  </article>;
 }
 
-export default function InvestmentResearch({storageKey='pasion'}){
+export default function InvestmentResearch({storageKey='pasion',company}){
+ const ticker=company?.ticker||'FPT';
  const {t}=usePreferences();
  const [facts,setFacts]=useState(null),[valuation,setValuation]=useState(null),[status,setStatus]=useState('Loading reviewed calculations');
  useEffect(()=>{
   let active=true;const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),12000);
   const read=async(response)=>{if(!response.ok)throw Error('Reviewed calculation service unavailable');const data=await response.json();if(data.version!==1)throw Error('Unsupported calculation contract');return data;};
-  Promise.allSettled([fetch('/api/research/company/FPT?period=TTM',{signal:controller.signal}).then(read),fetch('/api/research/valuation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:'FPT',scenario:'base',period:'TTM',valuation_date:new Date().toISOString().slice(0,10)}),signal:controller.signal}).then(read)]).then(results=>{
+  Promise.allSettled([fetch('/api/research/company/'+encodeURIComponent(ticker)+'?period=TTM',{signal:controller.signal}).then(read),fetch('/api/research/valuation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker,scenario:'base',period:'TTM',valuation_date:new Date().toISOString().slice(0,10)}),signal:controller.signal}).then(read)]).then(results=>{
    if(!active)return;if(results[0].status==='fulfilled')setFacts(results[0].value);if(results[1].status==='fulfilled')setValuation(results[1].value);
    setStatus(results.every(r=>r.status==='fulfilled')?'Reviewed calculations; unavailable inputs remain withheld':'Reviewed calculation coverage incomplete; missing inputs are unavailable');
   }).finally(()=>clearTimeout(timeout));return()=>{active=false;clearTimeout(timeout);controller.abort();};
- },[]);
+ },[ticker]);
  const metric=id=>factValue(facts?.metrics?.[id]);
  const currentPrice=valuation?.quote_gap?.status==='READY'?Number(valuation.quote_gap.price):null;
  const models=valuationModels.map(model=>{
@@ -76,14 +77,16 @@ export default function InvestmentResearch({storageKey='pasion'}){
  const reviewedSummary=summaryItems.map(([title],i)=>[title,[`Net margin: ${metric('net_margin')}`,facts?.quality?.diagnostics?.find(d=>d.definition_id==='revenue_growth')?.reason_codes?.join(', ')||'Comparable growth evidence unavailable','Eligible method results are shown individually','Reviewed dividend sustainability unavailable',`Debt / equity: ${metric('debt_equity')}`][i],'Review required','neutral']);
  const [activeSection,setActiveSection]=useState('Valuation');
  const [detail,setDetail]=useState(null);
- const [saved,setSaved]=useState(()=>{try{return localStorage.getItem(storageKey+'-fpt-research-saved')==='true'}catch{return false}});
- function saveResearch(){setSaved(value=>{const next=!value;try{localStorage.setItem(storageKey+'-fpt-research-saved',String(next))}catch{}return next})}
+ const savedKey=storageKey+'-research-saved-'+ticker;
+ const [saved,setSaved]=useState(()=>{try{return localStorage.getItem(savedKey)==='true'}catch{return false}});
+ useEffect(()=>{try{setSaved(localStorage.getItem(savedKey)==='true')}catch{setSaved(false)}},[savedKey]);
+ function saveResearch(){setSaved(value=>{const next=!value;try{localStorage.setItem(savedKey,String(next))}catch{}return next})}
  function jumpTo([label,id]){setActiveSection(label);document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'})}
  return <div className="investment-research">
   <header className="ir-page-heading"><div><span className="eyebrow">{t('COMPANY VALUATION')}</span><h1>{t('Investment Research')}</h1><p>{t('Assess company value, financial strength, and the factors behind an investment decision.')}</p></div></header>
-  <section className="ir-company-card" id="ir-summary" aria-label={t('FPT company snapshot')}>
+  <section className="ir-company-card" id="ir-summary" aria-label={t(ticker+' company snapshot')}>
    <div className="ir-company-overview">
-    <div className="ir-company-identity"><span className="ir-company-logo" aria-hidden="true">FPT</span><div><h1>FPT Corporation</h1><div className="ir-company-tags"><b>FPT</b><b>VN</b><span aria-hidden="true">☆</span></div><p>{t('Information Technology')} <i/> {t('Vietnam')}</p></div></div>
+    <div className="ir-company-identity"><span className="ir-company-logo" aria-hidden="true">{ticker.slice(0,3)}</span><div><h1>{company?.name||facts?.company?.name||ticker}</h1><div className="ir-company-tags"><b>{ticker}</b><b>{company?.country||'—'}</b><span aria-hidden="true">☆</span></div><p>{t(company?.sector||'Industry unavailable')} <i/> {t(company?.country||'Country unavailable')}</p></div></div>
     <div className="ir-quote"><strong>{Number.isFinite(currentPrice)?currentPrice.toLocaleString():'Unavailable'} <small>{valuation?.quote_gap?.status==='READY'?valuation.quote_gap.currency:''}</small></strong><span>{valuation?.quote_gap?.status||'UNAVAILABLE'}</span><em>{t('Verified quote required')}</em></div>
     <div className="ir-company-stat"><span>{t('Market Cap')}</span><strong>{metric('market_cap')}</strong></div>
     <div className="ir-company-stat"><span>{t('P/E (trailing)')}</span><strong>{metric('pe')}</strong></div>
@@ -123,7 +126,7 @@ export default function InvestmentResearch({storageKey='pasion'}){
    </article>
   </section>
 
-  <section className="ir-final-recommendation" id="ir-recommendation"><span className="ir-heading-icon" aria-hidden="true">◈</span><div><h2>{t('Research conclusion')}</h2><p>{t('Review the eligible method results and source assumptions. No automatic BUY recommendation or combined fair value is generated.')}</p><small>{t('Target range and holding period unavailable without an eligible method policy.')}</small></div><button type="button" onClick={()=>setDetail({name:'Research report',full:'FPT reviewed calculation status',drivers:[['Status',status],['Calculation version',valuation?.calculation_version||'Unavailable'],['Run',valuation?.run_id||'Unavailable'],['Sources',(valuation?.source_ids||[]).join(', ')||'Unavailable']]})}>{t('View detailed report')} <span aria-hidden="true">→</span></button></section>
+  <section className="ir-final-recommendation" id="ir-recommendation"><span className="ir-heading-icon" aria-hidden="true">◈</span><div><h2>{t('Research conclusion')}</h2><p>{t('Review the eligible method results and source assumptions. No automatic BUY recommendation or combined fair value is generated.')}</p><small>{t('Target range and holding period unavailable without an eligible method policy.')}</small></div><button type="button" onClick={()=>setDetail({name:'Research report',full:ticker+' reviewed calculation status',drivers:[['Status',status],['Calculation version',valuation?.calculation_version||'Unavailable'],['Run',valuation?.run_id||'Unavailable'],['Sources',(valuation?.source_ids||[]).join(', ')||'Unavailable']]})}>{t('View detailed report')} <span aria-hidden="true">→</span></button></section>
   <footer className="ir-page-footnote">{t('Reviewed calculations populate the existing cards. Missing source facts, assumptions, quotes and peer coverage remain unavailable.')}</footer>
 
   {detail&&<Dialog title={t(detail.full||detail.name)} onClose={()=>setDetail(null)} className="ir-detail-dialog"><p className="ir-detail-description">{t(status)}</p>{detail.drivers&&<dl>{detail.drivers.map(([label,value])=><div key={label}><dt>{t(label)}</dt><dd>{value}</dd></div>)}</dl>}<p>{t('Model values are sensitive to growth, discount rates, financial statement quality, and market conditions. Review source documents and update the assumptions before using this analysis.')}</p><button type="button" className="ir-dialog-close" onClick={()=>setDetail(null)}>{t('Close')}</button></Dialog>}
