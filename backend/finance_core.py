@@ -2,6 +2,7 @@
 import json
 import re
 import sqlite3
+from urllib.parse import urlsplit
 from contextlib import contextmanager, nullcontext
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -56,6 +57,13 @@ def ingest(root, payload, reviewer, now=None, connection=None):
     for item in payload['reports']:
         report = {k: item[k] for k in ('id', 'document_id', 'published_at', 'indexed_at')}
         report.update(source_hash=item.get('source_hash'),parser_version=item.get('parser_version'))
+        if item.get('source_url'):
+            address=urlsplit(item['source_url'])
+            if address.scheme!='https' or not address.hostname or address.username or address.password:
+                raise ValueError('Filing citation must have an HTTPS source URL')
+            report['source_url']=item['source_url']
+        if item.get('source_kind'):
+            report['source_kind']=item['source_kind']
         if not all(isinstance(report[k], str) and 1 <= len(report[k]) <= 200 for k in ('id', 'document_id')):
             raise ValueError('Invalid report identity.')
         instant(report['published_at']); instant(report['indexed_at'])
@@ -97,7 +105,7 @@ def ingest(root, payload, reviewer, now=None, connection=None):
                     da_eligible=item.get('da_eligible') is True, calculation_version=VERSION, reason_codes=[] if value is not None else ['MISSING_REPORTED_VALUE'])
         fact['information_clocks']=asdict(InformationClocks(report['published_at'],report['indexed_at'],now.isoformat()))
         fact['period_context']=asdict(BalanceAsOf(ticker,end.isoformat())) if metric in STOCK else asdict(AccountingPeriod(ticker,year,kind,start.isoformat(),end.isoformat()))
-        for key in ('ownership','financial_fact_key','structured_context'):
+        for key in ('ownership','financial_fact_key','structured_context','source_line_label'):
             if key in item:fact[key]=item[key]
         accepted.append(envelope(annotate(fact)))
     if not accepted or len(accepted) > 2000:
@@ -264,6 +272,8 @@ def company(root, ticker, kind='TTM', end=None, origin=None):
     da = values['da_expense']
     if da['status'] == 'READY' and not all(next((f for f in facts if f['id']==s), {}).get('da_eligible') is True for s in da['source_ids']):
         da = unavailable('da_expense','DA_NOT_VERIFIED_AS_EBIT_EXPENSE')
+    if da['status']=='READY' and Decimal(da['value'])<0:
+        da = unavailable('da_expense','NEGATIVE_DA_REQUIRES_EXPLICIT_POSITIVE_ADDBACK_CONVENTION')
     values['ebitda'] = derive('ebitda',[values['ebit'],da],lambda v:v[0]+v[1])
     for name, numerator, denominator in [('net_margin','net_income','revenue'),('ebitda_margin','ebitda','revenue'),('cfo_margin','cfo','revenue'),('cash_conversion','cfo','net_income')]:
         values[name] = derive(name,[values[numerator],values[denominator]],lambda v:v[0]/v[1]*100,unit='%')
@@ -338,4 +348,4 @@ def evidence(root,fact_id):
             if row:
                 citation=json.loads(row[0]);excerpt={k:citation.get(k) for k in ('section_id','page','page_kind','table','tag','row','column','excerpt','row_context','column_context','source_hash','parser_version','ownership')}
     # Reviewed financial citation only; never expose the admin original or storage path.
-    return envelope({k:fact[k] for k in ('id','ticker','definition_id','value','unit','currency','period_start','period_end','period_type','scope','accounting_basis','restatement_basis','revision','known_at','accepted_at','evidence','origin','status')} | {'report_id':report['id'],'published_at':report['published_at'],'indexed_at':report['indexed_at'],'source_hash':report.get('source_hash'),'parser_version':report.get('parser_version'),'source_excerpt':excerpt} | {'source_ids':fact.get('source_ids',[fact['id']]),'calculation_version':fact.get('calculation_version',VERSION),'reason_codes':fact.get('reason_codes',[]),'scale':fact.get('scale','1')})
+    return envelope({k:fact[k] for k in ('id','ticker','definition_id','value','unit','currency','period_start','period_end','period_type','scope','accounting_basis','restatement_basis','revision','known_at','accepted_at','evidence','origin','status')} | {'report_id':report['id'],'published_at':report['published_at'],'indexed_at':report['indexed_at'],'source_hash':report.get('source_hash'),'parser_version':report.get('parser_version'),'source_excerpt':excerpt,'source_url':report.get('source_url'),'source_kind':report.get('source_kind'),'source_line_label':fact.get('source_line_label')} | {'source_ids':fact.get('source_ids',[fact['id']]),'calculation_version':fact.get('calculation_version',VERSION),'reason_codes':fact.get('reason_codes',[]),'scale':fact.get('scale','1')})
