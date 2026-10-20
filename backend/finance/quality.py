@@ -2,7 +2,7 @@
 from decimal import Decimal
 
 CONTEXT=('currency','scope','ownership','accounting_basis','restatement_basis')
-def compatible(a,b):return all(a.get(k)==b.get(k) for k in CONTEXT)
+def compatible(a,b):return all(a.get(k) is not None and a.get(k) != '' and a.get(k)==b.get(k) for k in CONTEXT)
 
 def diagnostic(name,inputs,calculate,unit='x',same_period=True):
     base={'definition_id':name,'value':None,'unit':unit,'status':'UNAVAILABLE','reason_codes':[],
@@ -10,7 +10,7 @@ def diagnostic(name,inputs,calculate,unit='x',same_period=True):
         'calculation_version':'a05-v1','interpretation':'RELATIONSHIP_SCREEN_NOT_FRAUD_PROBABILITY',
         'inputs':[{k:i.get(k) for k in ('definition_id','value','unit','currency','period_start','period_end','period_type','scope','accounting_basis','known_at','status')} for i in inputs if i]}
     if not inputs or any(not i or i.get('status')!='READY' or i.get('value') is None for i in inputs):base['reason_codes']=['MISSING_ELIGIBLE_INPUTS'];return base
-    if any(not compatible(inputs[0],i) for i in inputs[1:]):base['reason_codes']=['INCOMPATIBLE_ACCOUNTING_CONTEXT'];return base
+    if any(not compatible(inputs[0],i) for i in inputs):base['reason_codes']=['MISSING_OR_INCOMPATIBLE_ACCOUNTING_CONTEXT'];return base
     if same_period and any((i.get('period_start'),i.get('period_end'),i.get('period_type'))!=(inputs[0].get('period_start'),inputs[0].get('period_end'),inputs[0].get('period_type')) for i in inputs[1:]):base['reason_codes']=['INCOMPATIBLE_DURATION'];return base
     try:
         value=calculate([Decimal(i['value']) for i in inputs])
