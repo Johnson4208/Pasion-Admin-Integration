@@ -127,7 +127,8 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
   direction=(positive-negative)/max(1,positive+negative)
   # Relevance/recency are heuristic research weights, not truth confidence.
   freshness=math.exp(-age/10)
-  weight=max(.02,query_relevance)*(.25+.75*freshness)
+  provenance_multiplier=1.15 if row.get('source_tier')=='PRIMARY_OFFICIAL_UNVERIFIED_CLAIM' else 1.0
+  weight=max(.02,query_relevance)*(.25+.75*freshness)*provenance_multiplier
   items.append({**row,'id':group,'cluster_id':group,'age_days':round(age,1),'relevance':round(query_relevance,3),
     'direction':round(direction,3),'weight':round(weight,5),'provenance_multiplier':provenance_multiplier,'source_tier':row.get('source_tier','RSS_AGGREGATED_UNVERIFIED')})
  # An independent source count is NOT measured from one aggregator.
