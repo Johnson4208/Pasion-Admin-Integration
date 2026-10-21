@@ -6,6 +6,7 @@ metadata/snippets. No unsourced economic facts or expert conclusions are added.
 """
 import math
 import re
+import event_horizons
 
 VERSION="scenario-board-v1"
 
@@ -32,7 +33,7 @@ def candidates(items,factor,focus,horizon):
  are relative lexical support indices (not probabilities or confidence).
  """
  if not isinstance(items,list):items=[]
- long_term=horizon in ('90 days','180 days')
+ long_term=event_horizons.info(horizon)['timeframe']=='LONG_TERM'
  scored=[]
  for ident,name,description,target,terms,scope in _PATHS:
   ranked=[]
