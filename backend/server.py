@@ -22,6 +22,7 @@ import security
 import market_summary
 import finance_core
 import public_filing_demo
+import sec_filings
 import valuation
 import stock_models
 from market import technical
@@ -808,6 +809,17 @@ class Handler(BaseHTTPRequestHandler):
             except (sqlite3.Error,OSError):self.respond(503,{'message':'Health archive unavailable.'})
             return
         if address in ('/api/admin/distribution','/api/admin/distribution/monitor'):self.distribution_api();return
+        sec_route=re.fullmatch(r'/api/research/sec/([A-Za-z0-9.-]{1,16})',address)
+        if sec_route:
+            if not self.current_session():
+                self.respond(401,{'message':'Please sign in again.'});return
+            try:
+                self.respond(200,sec_filings.research(sec_route[1],parse_qs(urlparse(self.path).query).get('refresh',['0'])[0]=='1'))
+            except sec_filings.FilingUnavailable as exc:
+                self.respond(422,{'status':'UNAVAILABLE','reason_code':exc.reason})
+            except (ValueError,KeyError,TypeError,ArithmeticError,OSError,sqlite3.Error):
+                self.respond(503,{'status':'UNAVAILABLE','reason_code':'SEC_RESEARCH_UNAVAILABLE'})
+            return
         if address=='/api/research/examples/apple-2025':
             if not self.current_session():
                 self.respond(401,{'message':'Please sign in again.'})
