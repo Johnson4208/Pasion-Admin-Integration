@@ -52,6 +52,7 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
  const [focus,setFocus]=useState('Vietnam'),[horizon,setHorizon]=useState('30 days');
  const [loading,setLoading]=useState(false),[result,setResult]=useState(null),[error,setError]=useState('');
  const [expanded,setExpanded]=useState('');
+ const [previousResult,setPreviousResult]=useState(null);
  const [studies,setStudies]=useState(()=>readStudies(savedKey));
  const [activeHistoryTab,setActiveHistoryTab]=useState('History');
  useEffect(()=>{try{localStorage.setItem(savedKey,JSON.stringify(studies))}catch{}},[savedKey,studies]);
@@ -59,14 +60,14 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
  const visibleStudies=activeHistoryTab==='Saved'?studies.filter(s=>s.saved):studies;
  function changeCategory(value){setCategory(value);setFactor(categories[value][0]);setResult(null);setError('');}
  async function runAnalysis(){
-  setLoading(true);setError('');setResult(null);setExpanded('');
+  setLoading(true);setError('');setExpanded('');
   const query=new URLSearchParams({category,factor,focus:focus.trim(),horizon});
   try{
    const response=await fetch('/api/research/events/live?'+query.toString(),{credentials:'same-origin'});
    const data=await response.json();
    if(!response.ok)throw Error(data.reason_code||data.message||'Research source unavailable');
    if(data.version!==1)throw Error('Invalid research response');
-   setResult(data);
+   setPreviousResult(result&&result.factor===factor&&result.focus===focus&&result.horizon===horizon?result:null);setResult(data);
   }catch(exc){setError(exc.message||'News research unavailable');}
   finally{setLoading(false);}
  }
@@ -79,6 +80,8 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
  }
  function updateStudy(id,key,value){setStudies(s=>s.map(x=>x.id===id?{...x,[key]:value}:x));}
  const ready=result?.status==='EVIDENCE_AVAILABLE';
+ const ranked=result?.dynamic_scenarios?.ranked_scenarios||[];
+ const previousRanked=previousResult?.dynamic_scenarios?.ranked_scenarios||[];
  const outlook=ready?result.outcomes:[];
  const max=outlook.length?outlook.reduce((a,b)=>b.share_pct>a.share_pct?b:a):null;
  return <div className="analytics-page event-scenarios-page">
@@ -117,7 +120,22 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
      <article><span>{t('EVIDENCE QUALITY')}</span><strong>{t('Unverified')}</strong><small>{t('RSS headlines & snippets')}</small></article>
      <article><span>{t('PROBABILITY')}</span><strong>—</strong><small>{t('Not calibrated')}</small></article>
     </div>
-    <div className="events-outlook-heading"><h3>{t('Scenario comparison — evidence shares')}</h3><p>{t('Weighted by recency, topical relevance and directional language. These are not forecast probabilities.')}</p></div>
+    <section className="events-dynamic-board" aria-label="Dynamic scenario ranking">
+     <div className="events-dynamic-top"><div><span className="events-section-kicker">DYNAMIC SCENARIO RESEARCH · {result.dynamic_scenarios?.timeframe||'SHORT_TERM'}</span><h3>Ranked conditional pathways</h3><p>Ten hypotheses ranked by article-level research support. These scenarios may overlap; they are not calibrated probabilities.</p></div><div className="events-horizon-switch"><button type="button" className={['7 days','30 days'].includes(horizon)?'is-active':''} onClick={()=>{setHorizon('30 days');setResult(null)}}>Short-term</button><button type="button" className={['90 days','180 days'].includes(horizon)?'is-active':''} onClick={()=>{setHorizon('180 days');setResult(null)}}>Long-term</button></div></div>
+     <div className="events-ranked-list">{ranked.map(sc=>{
+       const old=previousRanked.find(x=>x.id===sc.id);
+       const delta=sc.support_index!=null&&old?.support_index!=null?Math.round((sc.support_index-old.support_index)*100):null;
+       return <article className="events-ranked-item" key={sc.id}>
+         <span className="events-rank-number">#{sc.rank}</span><div className="events-rank-main">
+           <div className="events-rank-heading"><strong>{sc.title}</strong><span className="events-rank-value">{sc.support_index==null?'Awaiting evidence':(sc.support_index*100).toFixed(1)+' / 100 support index'}</span></div>
+           <p>{sc.definition} · {sc.supporting_source_count} source-linked articles · {sc.qualifier_fit} horizon</p>
+           <div className="events-ranked-track"><i style={{width:Math.max(0,Math.min(100,(sc.support_index||0)*100))+'%'}}/></div>
+           <div className="events-rank-foot"><span>{delta==null?'No comparable previous run':(delta>=0?'+':'')+delta+' index points since previous run'} · Probability unavailable</span><button type="button" onClick={()=>setExpanded(expanded===sc.id?'':sc.id)}>{expanded===sc.id?'Hide':'Evidence'} ↓</button></div>
+           {expanded===sc.id&&<div className="events-rank-sources">{sc.sources.length?sc.sources.map((src,i)=><p key={src.id||i}><a href={src.url} rel="noopener noreferrer" target="_blank">{src.title}</a> · {src.source}</p>):<p>No explicit matching source evidence. Scenario retained for monitoring, not scored.</p>}</div>}
+         </div></article>})}</div>
+     <p className="events-ranked-note">The existing Bayesian engine is not activated without historically validated priors and likelihoods. Higher source support alone must not be labeled a 90% event probability.</p>
+    </section>
+    {false&&<><div className="events-outlook-heading"><h3>{t('Scenario comparison — evidence shares')}</h3><p>{t('Weighted by recency, topical relevance and directional language. These are not forecast probabilities.')}</p></div>
     <div className="events-outcomes">{outcomes.map((item,index)=>{
       const observed=outlook.find(x=>x.id===item.key);const pct=observed?.share_pct??null;
       return <article className={'events-outcome-card tone-'+item.tone} key={item.key}><header><div><span className="events-outcome-label"><b aria-hidden="true">{item.direction}</b>{t(item.label)}</span><h4>{t(names[index])}</h4></div><strong>{pct===null?'—':pct.toFixed(1)+'%'}</strong></header>
@@ -125,7 +143,7 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
        <p className="events-outcome-explanation">Research weight based on {observed?.evidence_count??0} unique story clusters with aligned wording. Lexical direction can be wrong; verify original articles.</p>
        <button type="button" className="events-inspect-button" onClick={()=>setExpanded(expanded===item.key?'':item.key)} aria-expanded={expanded===item.key}>Inspect source details</button>
        {expanded===item.key&&<div className="events-no-drivers">{result.items.filter(x=>item.key==='weakening'?x.direction<-.1:item.key==='supportive'?x.direction>.1:Math.abs(x.direction)<=.1).slice(0,5).map(x=><p key={x.id}><a href={x.url} target="_blank" rel="noopener noreferrer">{x.title}</a> · {x.source} · {new Date(x.published_at).toLocaleDateString()}</p>)}</div>}
-      </article>})}</div>
+      </article>})}</div></>}
    </section>
    <section className="home-card events-logic-card"><h3>Methodology and limitations</h3><p>Scope: {result.coverage?.region||'Not established'} · Results collected: {result.coverage?.raw_results??'—'} · Feeds: {(result.coverage?.providers||[]).join(', ')||'Unavailable'}</p>
     <p>Adapted from SolvAI58: deduplicated recent news, topical relevance, freshness and directional language. The model is deterministic, evidence-weighted and uncalibrated; it does not predict a verified outcome or generate trading instructions. All feed items are unreviewed proxies.</p>
