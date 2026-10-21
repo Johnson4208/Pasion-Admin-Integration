@@ -13,6 +13,7 @@ from urllib.error import URLError,HTTPError
 import event_feed_sources
 import event_bayesian
 import event_scenario_board
+import event_horizons
 
 _TOPICS={
  'Geopolitics': {'Conflict risk':('conflict escalation ceasefire regional security','conflict escalation ceasefire stability'),
@@ -101,9 +102,9 @@ def fetch(query,focus):
 def analyze(category,factor,focus='',horizon='30 days',now=None):
  now=now or datetime.now(timezone.utc)
  if factor not in _TOPICS.get(category,{}):raise ValueError('Unsupported category or event factor')
- if horizon not in ('7 days','30 days','90 days','180 days'):raise ValueError('Unsupported research horizon')
+ horizon_info=event_horizons.info(horizon)
  if not isinstance(focus,str) or len(focus)>120 or any(c in focus for c in '\r\n\x00'):raise ValueError('Invalid geographical focus')
- lookback=int(horizon.split(' ')[0])
+ lookback=horizon_info['news_lookback_days']
  key=(category,factor,focus,horizon)
  with _lock:
   saved=_cache.get(key)
@@ -111,7 +112,7 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
  terms,_=_TOPICS[category][factor]
  try:rows,coverage=event_feed_sources.retrieve(terms,focus)
  except event_feed_sources.FeedError as exc:raise Unavailable(str(exc)) from exc
- seen=set();items=[];age_limit=max(lookback,30)
+ seen=set();items=[];age_limit=lookback
  for row in rows:
   t=datetime.fromisoformat(row['published_at'])
   age=(now-t).total_seconds()/86400
@@ -122,7 +123,11 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
   if group in seen:continue
   seen.add(group)
   query_relevance=len(_tokens(row['title']+' '+row['description'])&_tokens(terms+' '+focus)) /max(1,len(_tokens(terms+' '+focus)))
-  if query_relevance<.06:continue
+  # Demand topic evidence: a broad word like 'research' alone does not qualify.
+  topic_tokens=_tokens(terms)-{'research','development','market','industry','economy','business','growth','risk'}
+  matching_topic=len(_tokens(row['title']+' '+row['description'])&topic_tokens)
+  if matching_topic<2:continue
+  if query_relevance<.09:continue
   text=(row['title']+' '+row['description']).casefold()
   positive=sum(1 for w in _POS if w in text);negative=sum(1 for w in _NEG if w in text)
   direction=(positive-negative)/max(1,positive+negative)
@@ -135,7 +140,7 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
  # An independent source count is NOT measured from one aggregator.
  if len(items)<2:
   return {'version':1,'status':'UNAVAILABLE','reason_code':'INSUFFICIENT_RECENT_DISTINCT_STORIES',
-   'items':items,'outcomes':[],'dynamic_scenarios':event_scenario_board.candidates(items,factor,focus,horizon),'source_count':len(items),'independent_source_count':None,'coverage':coverage,'bayesian_forecast':event_bayesian.unavailable(),
+   'items':items,'outcomes':[],'horizon_info':horizon_info,'dynamic_scenarios:event_scenario_board.candidates(items,factor,focus,horizon),'source_count':len(items),'independent_source_count':None,'coverage':coverage,'bayesian_forecast':event_bayesian.unavailable(),
    'calibrated_probability':False,'probability_status':'UNAVAILABLE_NO_CALIBRATED_EVENT_MODEL'}
  total=sum(x['weight'] for x in items)
  tilt=sum(x['direction']*x['weight'] for x in items)/total
@@ -143,7 +148,7 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
  raw=[math.exp(-.9*tilt),math.exp(.25-.75*abs(tilt)),math.exp(.9*tilt)]
  denom=sum(raw);shares=_round_shares([x/denom for x in raw])
  counts=[sum(1 for x in items if x['direction']<-.1),sum(1 for x in items if abs(x['direction'])<=.1),sum(1 for x in items if x['direction']>.1)]
- result={'version':1,'status':'EVIDENCE_AVAILABLE','category':category,'factor':factor,'focus':focus,'horizon':horizon,
+ result={'version':1,'status':'EVIDENCE_AVAILABLE','horizon_info':horizon_info,'category':category,'factor':factor,'focus':focus,'horizon':horizon,
   'outcomes':[{'id':key,'share_pct':pct,'evidence_count':count} for key,pct,count in zip(('weakening','mixed','supportive'),shares,counts)],
   'items':sorted(items,key=lambda x:x['weight'],reverse=True)[:24],'source_count':len(items),
   'independent_source_count':None,'coverage':coverage,'generated_at':now.isoformat(),
