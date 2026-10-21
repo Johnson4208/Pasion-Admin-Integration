@@ -27,7 +27,7 @@ def detect_profile(document):
    if len(line)<250:text.append((fold(line),str(s.get("id"))))
  statements=[];standards=[];scopes=[];issuers=[]
  for line,source in text:
-  if re.search(r"\b(?:u s gaap|generally accepted accounting principles in the united states|accounting principles generally accepted in the united states)\b",line):standards.append(("US_GAAP",source))
+  if re.search(r"\b(?:us gaap|u s gaap|generally accepted accounting principles in the united states|accounting principles generally accepted in the united states)\b",line):standards.append(("US_GAAP",source))
   if re.search(r"\b(?:vietnamese accounting standards|chuan muc ke toan viet nam|che do ke toan doanh nghiep viet nam|vas)\b",line):standards.append(("VAS",source))
   if re.search(r"\b(?:consolidated financial statements|bao cao tai chinh hop nhat)\b",line):scopes.append(("CONSOLIDATED",source))
   if re.search(r"\b(?:separate financial statements|parent company financial statements|bao cao tai chinh rieng|bao cao tai chinh cong ty me)\b",line):scopes.append(("SEPARATE",source))
@@ -74,7 +74,7 @@ def date_end(raw,market=None):
 
 def period_header(raw):
  """A candidate time window, never a validated issuer fiscal calendar."""
- value=re.sub(r"\\bfy(?=20\\d{2}\\b)","fy ",fold(raw))
+ value=re.sub(r"\bfy(?=20\d{2}\b)","fy ",fold(raw))
  y=re.search(r"\b(20\d{2})\b",value)
  if not y:return None
  year=y[1];end=date_end(raw)
