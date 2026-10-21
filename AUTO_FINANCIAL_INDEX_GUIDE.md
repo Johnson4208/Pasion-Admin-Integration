@@ -26,3 +26,25 @@ Existing files already uploaded **before this change** do not automatically get 
 - Full integration, security, OCR, user acceptance and performance tests.
 
 No main-database mutation is performed by `financial_auto_index.scan`; only existing financial approval workflow writes accepted facts.
+
+
+## United States and Vietnam monetary-unit support (v1)
+
+The auto-index now recognizes **explicit monetary unit declarations** in extracted report text, titles and table headers and suggests **USD/VND** plus factors 1, 1,000, 1,000,000 and 1,000,000,000. Examples:
+
+| Report annotation | Printed source cell | Parsed value | Scale | Canonical value |
+| --- | ---: | ---: | ---: | ---: |
+| Đơn vị tính: triệu đồng | 1.234,5 | 1234.5 | 1,000,000 | 1,234,500,000 VND |
+| (In millions of US dollars) | 1,234.50 | 1234.50 | 1,000,000 | 1,234,500,000 USD |
+
+The Vietnamese parser uses dot grouping and comma decimals, while the US parser uses comma grouping and dot decimals. No market is inferred from the symbol alone. Source evidence, unit status and canonical numeric value are retained per candidate, and the reviewer form pre-fills recognized currency and scale.
+
+**Fail closed:** conflicting or missing unit declarations leave currency/scale empty; financial candidates do not become accepted facts. The human reviewer must verify original context, period and scale, not merely select the suggested number. In particular, US GAAP vs VAS accounting standards are not inferred from the denomination, and no FX conversion is performed.
+
+Run the additional tests with:
+
+```powershell
+python -m unittest discover -s backend -p test_financial_locale.py -v
+```
+
+The current release focuses on the standard US/Vietnam number conventions. Mixed formats, translations beyond its initial label catalog, quarterly/year-to-date columns, section-specific units, and annual fiscal calendars still need dedicated adapters and tests. These limits do not change the existing human approval requirement.
