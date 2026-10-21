@@ -10,6 +10,7 @@ import json
 import re
 import unicodedata
 from decimal import Decimal, InvalidOperation
+import financial_locale
 
 VERSION="financial-index-v1"
 LABELS={
@@ -73,9 +74,11 @@ def number(cell):
 def scan(document):
  if document.get("status") not in (None,"ready","processing"):return {"version":VERSION,"status":"UNAVAILABLE","candidates":[],"warnings":["DOCUMENT_NOT_READY"]}
  candidates=[]
+ catalog=financial_locale.source_catalog(document)
  for section in (document.get("sections") or [])[:2000]:
   grid=section.get("table")
   if not isinstance(grid,list) or len(grid)<2:continue
+  unit=financial_locale.identify(document,section,catalog)
   # Require explicit annual columns, not arbitrary line text or OCR guesses.
   columns={}
   header_row=None
@@ -93,11 +96,13 @@ def scan(document):
    for col,year in columns.items():
     if col>=len(row):continue
     raw=str(row[col] or "").strip()
-    value=number(raw)
+    value=financial_locale.parse_number(raw,unit['locale']) if unit['locale'] else number(raw)
     if value is None:continue
     key=":".join([str(section.get("id")),str(row_idx),str(col),metric,year])
     candidates.append({"id":hashlib.sha256(key.encode()).hexdigest()[:24],
       "definition_id":metric,"value":value,"source_text":raw,
+      "currency":unit['currency'],"scale":unit['scale'],"unit_status":unit['status'],"unit_evidence":unit['evidence'],
+      "normalized_value":str(Decimal(value)*Decimal(unit['scale'])) if unit['scale'] is not None else None,
       "year":year,"period_type":"INSTANT" if metric in STOCK else "FY",
       "unit":"currency","section_id":section.get("id"),"page":section.get("page"),
       "table":str(section.get("title") or "Financial table")[:200],
@@ -115,4 +120,5 @@ def scan(document):
   "warnings":[ "No accepted facts have been created. Confirm issuer, fiscal calendar, currency, scale, accounting perimeter, source cells and publication time.",
                "OCR/text outside a year-headed table is not automatically promoted to a financial fact.",
                "Year headers do not prove a fiscal year ends on December 31.",
+               "VND/USD and denomination are only suggested from explicit source declarations; missing or conflicting units must be reviewed.",
                "Potential duplicates are withheld from automatic staging."]}
