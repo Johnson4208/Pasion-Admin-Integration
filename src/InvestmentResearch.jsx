@@ -3,7 +3,6 @@ import Dialog from './Dialog';
 import {usePreferences} from './Preferences';
 import './investment-research.scss';
 import {factValue} from './FinancialFacts';
-import PublicFilingDemo from './PublicFilingDemo';
 
 const valuationModels=[
  {name:'DCF',full:'Discounted Cash Flow',value:'78,400',change:'+26.2%',tone:'positive',badge:'Highest value',drivers:[['WACC','9.5%'],['Terminal growth','2.5%'],['Forecast period','5 years']]},
@@ -57,6 +56,17 @@ export default function InvestmentResearch({storageKey='pasion',company}){
  const ticker=company?.ticker||'FPT';
  const {t}=usePreferences();
  const [facts,setFacts]=useState(null),[valuation,setValuation]=useState(null),[status,setStatus]=useState('Loading reviewed calculations');
+ const [sec,setSec]=useState(null),[secStatus,setSecStatus]=useState(''),[secLoading,setSecLoading]=useState(false);
+ useEffect(()=>{setSec(null);setSecStatus('');setFacts(null);setValuation(null);},[ticker]);
+ useEffect(()=>{
+  let active=true;const controller=new AbortController();
+  setSecLoading(true);
+  fetch('/api/research/sec/'+encodeURIComponent(ticker),{signal:controller.signal}).then(async r=>{const d=await r.json();if(!r.ok)throw Error(d.reason_code||'SEC data unavailable');return d;}).then(d=>{if(active){setSec(d);setSecStatus('');}}).catch(e=>{if(active)setSecStatus(e.message);}).finally(()=>{if(active)setSecLoading(false);});
+  return()=>{active=false;controller.abort();};
+ },[ticker]);
+ const canUseSec=(!facts||facts.status==='UNAVAILABLE')&&sec?.financials?.status==='READY';
+ const displayedFacts=canUseSec?sec.financials:facts;
+ const sourceLabel=canUseSec?sec.source_status:'ADMIN_REVIEWED_DATA';
  useEffect(()=>{
   let active=true;const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),12000);
   const read=async(response)=>{if(!response.ok)throw Error('Reviewed calculation service unavailable');const data=await response.json();if(data.version!==1)throw Error('Unsupported calculation contract');return data;};
@@ -65,7 +75,7 @@ export default function InvestmentResearch({storageKey='pasion',company}){
    setStatus(results.every(r=>r.status==='fulfilled')?'Reviewed calculations; unavailable inputs remain withheld':'Reviewed calculation coverage incomplete; missing inputs are unavailable');
   }).finally(()=>clearTimeout(timeout));return()=>{active=false;clearTimeout(timeout);controller.abort();};
  },[ticker]);
- const metric=id=>factValue(facts?.metrics?.[id]);
+ const metric=id=>factValue(displayedFacts?.metrics?.[id]);
  const currentPrice=valuation?.quote_gap?.status==='READY'?Number(valuation.quote_gap.price):null;
  const models=valuationModels.map(model=>{
   const row=valuation?.methods?.find(r=>r.method===({DCF:'FCFF','P/E':'P/E',DDM:'DDM',Gordon:'Gordon','Asset-based':'Asset-based'}[model.name]));
@@ -75,7 +85,7 @@ export default function InvestmentResearch({storageKey='pasion',company}){
  });
  const financialValues=['revenue','net_income','net_margin','ebitda_margin','roe','roa','debt_equity','current_ratio',null];
  const reviewedFinancialRows=financialRows.map((row,i)=>[row[0],financialValues[i]?metric(financialValues[i]):'Unavailable','Unavailable','Not comparable','neutral']);
- const reviewedSummary=summaryItems.map(([title],i)=>[title,[`Net margin: ${metric('net_margin')}`,facts?.quality?.diagnostics?.find(d=>d.definition_id==='revenue_growth')?.reason_codes?.join(', ')||'Comparable growth evidence unavailable','Eligible method results are shown individually','Reviewed dividend sustainability unavailable',`Debt / equity: ${metric('debt_equity')}`][i],'Review required','neutral']);
+ const reviewedSummary=summaryItems.map(([title],i)=>[title,[`Net margin: ${metric('net_margin')}`,displayedFacts?.quality?.diagnostics?.find(d=>d.definition_id==='revenue_growth')?.reason_codes?.join(', ')||'Comparable growth evidence unavailable','Eligible method results are shown individually','Reviewed dividend sustainability unavailable',`Debt / equity: ${metric('debt_equity')}`][i],'Review required','neutral']);
  const [activeSection,setActiveSection]=useState('Valuation');
  const [detail,setDetail]=useState(null);
  const savedKey=storageKey+'-research-saved-'+ticker;
@@ -98,7 +108,7 @@ export default function InvestmentResearch({storageKey='pasion',company}){
    <nav className="ir-tabs" aria-label={t('Investment research sections')}>
     {navSections.map(item=><button type="button" key={item[0]} aria-pressed={activeSection===item[0]} className={activeSection===item[0]?'is-active':''} onClick={()=>jumpTo(item)}>{t(item[0])}</button>)}
    </nav>
-   <div className="ir-disclosure"><span className="ir-disclosure-dot"/>{t(status)}</div>
+   <div className="ir-disclosure"><span className="ir-disclosure-dot"/>{t(status)}{canUseSec&&<span> · FY {sec.period_end} · {sourceLabel} · NOT VERIFIED FOR VALUATION</span>}</div>
   </section>
 
   <section className="ir-top-grid" id="ir-valuation">
@@ -119,8 +129,8 @@ export default function InvestmentResearch({storageKey='pasion',company}){
     <div className="ir-table-scroll"><table className="ir-financial-table"><thead><tr><th>{t('Metric')}</th><th>{t('Value')}</th><th>{t('Industry Avg.')}</th><th>{t('vs. Industry')}</th></tr></thead><tbody>{reviewedFinancialRows.map(([metric,value,average,delta,tone])=><tr key={metric}><th scope="row">{t(metric)}</th><td>{value}</td><td>{average}</td><td className={tone}>{delta}</td></tr>)}</tbody></table></div>
    </article>
    <article className="ir-card ir-health-card" id="ir-health"><header className="ir-section-heading"><span className="ir-heading-icon" aria-hidden="true">◉</span><div><h2>{t('Financial Health Assessment')}</h2><p>{t('Reason-coded diagnostics; no invented health score')}</p></div><span className="ir-health-state">● {t('Unavailable')} <b>→</b></span></header>
-    <div className="ir-health-content"><div className="ir-health-gauge" role="img" aria-label={t('Health score unavailable')} style={{background:'var(--pref-soft)'}}><div><strong>{t('Unavailable')}</strong><span>{t('Overall Score')}</span></div></div><ul className="ir-health-checks">{(facts?.quality?.flags?.length?facts.quality.flags.map(flag=>flag.interpretation):['Reviewed health diagnostics incomplete']).map(text=><li key={text}><span>✓</span>{t(text)}</li>)}</ul></div>
-    <aside className="ir-key-insight"><span aria-hidden="true">♧</span><div><strong>{t('Key Insight')}</strong><p>{t(facts?.quality?.health_heuristic?.reason_codes?.join(', ')||'Reviewed inputs and normalized health policy are required; no score is inferred from missing facts.')}</p></div></aside>
+    <div className="ir-health-content"><div className="ir-health-gauge" role="img" aria-label={t('Health score unavailable')} style={{background:'var(--pref-soft)'}}><div><strong>{t('Unavailable')}</strong><span>{t('Overall Score')}</span></div></div><ul className="ir-health-checks">{(displayedFacts?.quality?.flags?.length?displayedFacts.quality.flags.map(flag=>flag.interpretation):['Reviewed health diagnostics incomplete']).map(text=><li key={text}><span>✓</span>{t(text)}</li>)}</ul></div>
+    <aside className="ir-key-insight"><span aria-hidden="true">♧</span><div><strong>{t('Key Insight')}</strong><p>{t(displayedFacts?.quality?.health_heuristic?.reason_codes?.join(', ')||'Reviewed inputs and normalized health policy are required; no score is inferred from missing facts.')}</p></div></aside>
    </article>
    <article className="ir-card ir-summary-card"><header className="ir-section-heading"><span className="ir-heading-icon" aria-hidden="true">✥</span><div><h2>{t('Summary')}</h2><p>{t('Key metrics and research context')}</p></div></header>
     <div className="ir-summary-list">{reviewedSummary.map(([title,description,status,tone])=><div className="ir-summary-row" key={title}><span className="ir-summary-icon" aria-hidden="true">{title==='Profitability'?'◉':title==='Growth'?'↗':title==='Valuation'?'▣':title==='Dividends'?'♧':'⬡'}</span><div><strong>{t(title)}</strong><p>{t(description)}</p></div><span className={'ir-summary-status '+tone}>{t(status)}</span></div>)}</div>
@@ -128,7 +138,12 @@ export default function InvestmentResearch({storageKey='pasion',company}){
   </section>
 
   <section className="ir-final-recommendation" id="ir-recommendation"><span className="ir-heading-icon" aria-hidden="true">◈</span><div><h2>{t('Research conclusion')}</h2><p>{t('Review the eligible method results and source assumptions. No automatic BUY recommendation or combined fair value is generated.')}</p><small>{t('Target range and holding period unavailable without an eligible method policy.')}</small></div><button type="button" onClick={()=>setDetail({name:'Research report',full:ticker+' reviewed calculation status',drivers:[['Status',status],['Calculation version',valuation?.calculation_version||'Unavailable'],['Run',valuation?.run_id||'Unavailable'],['Sources',(valuation?.source_ids||[]).join(', ')||'Unavailable']]})}>{t('View detailed report')} <span aria-hidden="true">→</span></button></section>
-  <PublicFilingDemo/>
+  <section className="ir-card" aria-label="Financial filing evidence" style={{padding:18,marginBlock:16}}>
+   <header className="ir-section-heading"><div><h2>Financial filing source</h2><p>{secLoading?'Checking SEC XBRL filings…':canUseSec?'Financial indicators above use the selected company's fiscal-year SEC filing. These machine-read figures have not been human-reviewed.':(secStatus||'Financial figures require an accepted filing or eligible SEC XBRL data.')}</p></div></header>
+   {sec&&<p>{sec.issuer} · FY {sec.period_end} · {sec.source_status} · <a href={sec.filing_url} target="_blank" rel="noopener noreferrer">SEC filing ↗</a></p>}
+   <p>Valuation models use separately accepted issuer facts and reviewed assumptions. SEC machine-read observations never automatically authorize a fair-value estimate.</p>
+   {canUseSec&&<details><summary>Financial fact definitions and source tags</summary>{Object.entries(sec.source_details||{}).map(([key,rows])=><p key={key}><strong>{key}:</strong> {rows.map(r=>r.tag).join(', ')}</p>)}</details>}
+  </section>
   <footer className="ir-page-footnote">{t('Reviewed calculations populate the existing cards. Missing source facts, assumptions, quotes and peer coverage remain unavailable.')}</footer>
 
   {detail&&<Dialog title={t(detail.full||detail.name)} onClose={()=>setDetail(null)} className="ir-detail-dialog"><p className="ir-detail-description">{t(status)}</p>{detail.drivers&&<dl>{detail.drivers.map(([label,value])=><div key={label}><dt>{t(label)}</dt><dd>{value}</dd></div>)}</dl>}<p>{t('Model values are sensitive to growth, discount rates, financial statement quality, and market conditions. Review source documents and update the assumptions before using this analysis.')}</p><button type="button" className="ir-dialog-close" onClick={()=>setDetail(null)}>{t('Close')}</button></Dialog>}
