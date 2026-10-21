@@ -3,6 +3,7 @@ import Dialog from './Dialog';
 import {usePreferences} from './Preferences';
 import './investment-research.scss';
 import {factValue} from './FinancialFacts';
+import PublicFilingDemo from './PublicFilingDemo';
 
 const valuationModels=[
  {name:'DCF',full:'Discounted Cash Flow',value:'78,400',change:'+26.2%',tone:'positive',badge:'Highest value',drivers:[['WACC','9.5%'],['Terminal growth','2.5%'],['Forecast period','5 years']]},
@@ -127,6 +128,7 @@ export default function InvestmentResearch({storageKey='pasion',company}){
   </section>
 
   <section className="ir-final-recommendation" id="ir-recommendation"><span className="ir-heading-icon" aria-hidden="true">◈</span><div><h2>{t('Research conclusion')}</h2><p>{t('Review the eligible method results and source assumptions. No automatic BUY recommendation or combined fair value is generated.')}</p><small>{t('Target range and holding period unavailable without an eligible method policy.')}</small></div><button type="button" onClick={()=>setDetail({name:'Research report',full:ticker+' reviewed calculation status',drivers:[['Status',status],['Calculation version',valuation?.calculation_version||'Unavailable'],['Run',valuation?.run_id||'Unavailable'],['Sources',(valuation?.source_ids||[]).join(', ')||'Unavailable']]})}>{t('View detailed report')} <span aria-hidden="true">→</span></button></section>
+  <PublicFilingDemo/>
   <footer className="ir-page-footnote">{t('Reviewed calculations populate the existing cards. Missing source facts, assumptions, quotes and peer coverage remain unavailable.')}</footer>
 
   {detail&&<Dialog title={t(detail.full||detail.name)} onClose={()=>setDetail(null)} className="ir-detail-dialog"><p className="ir-detail-description">{t(status)}</p>{detail.drivers&&<dl>{detail.drivers.map(([label,value])=><div key={label}><dt>{t(label)}</dt><dd>{value}</dd></div>)}</dl>}<p>{t('Model values are sensitive to growth, discount rates, financial statement quality, and market conditions. Review source documents and update the assumptions before using this analysis.')}</p><button type="button" className="ir-dialog-close" onClick={()=>setDetail(null)}>{t('Close')}</button></Dialog>}
