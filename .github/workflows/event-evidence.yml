@@ -6,10 +6,13 @@ on:
       - 'backend/event_news_preview.py'
       - 'backend/event_feed_sources.py'
       - 'backend/event_bayesian.py'
+      - 'backend/event_scenario_board.py'
       - 'backend/test_event_news_preview.py'
       - 'backend/test_event_feed_sources.py'
       - 'backend/test_event_bayesian.py'
+      - 'backend/test_event_scenario_board.py'
       - 'src/EventScenarios.jsx'
+      - 'src/event-scenarios.scss'
       - '.github/workflows/event-evidence.yml'
   pull_request:
     paths:
@@ -29,6 +32,7 @@ jobs:
           python -m unittest discover -s backend -p 'test_event_news_preview.py' -v
           python -m unittest discover -s backend -p 'test_event_feed_sources.py' -v
           python -m unittest discover -s backend -p 'test_event_bayesian.py' -v
+          python -m unittest discover -s backend -p 'test_event_scenario_board.py' -v
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
