@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from documents import DocumentError, MAX_FILE_SIZE, extract_document, search_document, validate_upload
+import financial_auto_index
 
 MAX_DOCUMENTS = 100
 MAX_AI_CONTEXT = 40000
@@ -217,6 +218,7 @@ def _extraction_worker(root, document_id, token):
             return
         _update_processing(root, document_id, token, processingStage='extracting')
         extracted = extract_document(document['name'], row[1])
+        extracted['financial_index'] = financial_auto_index.scan(extracted)
         _update_processing(root, document_id, token, **extracted,
                            status='ready', processingStage='complete', error=None)
     except DocumentError as error:
