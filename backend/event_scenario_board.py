@@ -7,6 +7,7 @@ metadata/snippets. No unsourced economic facts or expert conclusions are added.
 import math
 import re
 import event_horizons
+import event_experimental_probability
 
 VERSION="scenario-board-v1"
 
@@ -62,16 +63,18 @@ def candidates(items,factor,focus,horizon):
             'source':e.get('source'),'published_at':e.get('published_at'),
             'weight':e.get('weight'),'direction':e.get('direction')}
            for _,e,_ in supported[:3]]
-  scored.append({'id':ident,'title':name,'definition':description,'factor':factor,'focus':focus or 'World',
+  experimental=event_experimental_probability.estimate(
+      [{**entry,"cluster_id":entry.get("cluster_id") or entry.get("id")} for _,entry,_ in supported[:10]],target,ident)
+  scored.append({'experimental_probability':experimental,'id':ident,'title':name,'definition':description,'factor':factor,'focus':focus or 'World',
     'temporal_fit':'LONG_TERM' if long_term else 'SHORT_TERM',
     'qualifier_fit':scope,'support_index':support_index,
-    'status':'RESEARCH_SUPPORT_ONLY' if supported else 'PENDING_EVIDENCE',
+    'status':'EXPERIMENTAL_ESTIMATE' if experimental else 'PENDING_EVIDENCE',
     'supporting_source_count':len(supported),'sources':sources,'probability':None,
     'probability_status':'NOT_CALIBRATED','mutually_exclusive':False})
- scored.sort(key=lambda s:(s['support_index'] is None,-(s['support_index'] or 0),s['id']))
+ scored.sort(key=lambda s:(s['experimental_probability'] is None,-(s['experimental_probability'] or {}).get('probability_estimate',0),s['id']))
  for rank,s in enumerate(scored,1):s['rank']=rank
  return {'version':VERSION,'status':'RANKED_RESEARCH_HYPOTHESES','ranked_scenarios':scored,
          'minimum_display_count':10,'scenario_count':len(scored),'timeframe':'LONG_TERM' if long_term else 'SHORT_TERM',
-         'ranking_metric':'LEXICAL_EVIDENCE_SUPPORT_INDEX_NOT_PROBABILITY',
+         'ranking_metric':'EXPERIMENTAL_UNCALIBRATED_PROBABILITY_ESTIMATE',
          'calibrated_probability':False,'hypotheses_overlap':True,
          'notice':'Ten conditional research pathways, not ten mutually exclusive or calibrated forecast outcomes. Scores cannot be added to 100%.'}
