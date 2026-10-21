@@ -12,10 +12,11 @@ import unicodedata
 from decimal import Decimal, InvalidOperation
 import financial_locale
 import financial_report_context
+import financial_table_layout
 
 VERSION="financial-index-v1"
 LABELS={
- "revenue":("revenue","net revenue","total revenue","net sales","doanh thu thuan","doanh thu ban hang va cung cap dich vu"),
+ "revenue":("revenue","net revenue","total revenue","net sales","doanh thu thuan"),
  "net_income":("net income","net profit","profit for the year","profit after tax","loi nhuan sau thue","loi nhuan rong"),
  "net_income_common":("net income attributable to shareholders","net income attributable to ordinary shareholders","profit attributable to owners of the parent","loi nhuan sau thue cua co dong cong ty me"),
  "operating_profit":("operating profit","operating income","loi nhuan thuan tu hoat dong kinh doanh"),
@@ -82,15 +83,7 @@ def scan(document):
   if not isinstance(grid,list) or len(grid)<2:continue
   unit=financial_locale.identify(document,section,catalog)
   statement_type=financial_report_context.statement_type(section)
-  # Require explicit annual columns, not arbitrary line text or OCR guesses.
-  columns={}
-  header_row=None
-  for row_idx,row in enumerate(grid[:3]):
-   if not isinstance(row,list):continue
-   found={j:(financial_report_context.period_header(v) or ({'year':year_column(v),'period_type':'YEAR_UNSPECIFIED','period_end_hint':None,'status':'PERIOD_CANDIDATE_REQUIRES_FISCAL_CALENDAR'} if year_column(v) else None)) for j,v in enumerate(row) if j>0}
-   found={j:y for j,y in found.items() if y}
-   if found:
-    header_row=row_idx;columns=found;break
+  columns,header_row,header_issues=financial_table_layout.headers(grid)
   if header_row is None:continue
   for row_idx,row in enumerate(grid[header_row+1:],start=header_row+1):
    if not isinstance(row,list) or not row:continue
@@ -109,6 +102,7 @@ def scan(document):
       "normalized_value":str(Decimal(value)*Decimal(unit['scale'])) if unit['scale'] is not None else None,
       "year":year,"period_type":"INSTANT" if metric in STOCK else period['period_type'],
       "period_candidate":period,"statement_type":statement_type,
+      "layout_warnings":header_issues,
       "unit":"currency","section_id":section.get("id"),"page":section.get("page"),
       "table":str(section.get("title") or "Financial table")[:200],
       "row":row_idx,"column":col,"row_label":str(row[0])[:160],
