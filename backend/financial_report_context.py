@@ -74,7 +74,7 @@ def date_end(raw,market=None):
 
 def period_header(raw):
  """A candidate time window, never a validated issuer fiscal calendar."""
- value=fold(raw)
+ value=re.sub(r"\\bfy(?=20\\d{2}\\b)","fy ",fold(raw))
  y=re.search(r"\b(20\d{2})\b",value)
  if not y:return None
  year=y[1];end=date_end(raw)
