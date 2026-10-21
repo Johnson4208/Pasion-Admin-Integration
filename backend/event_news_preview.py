@@ -129,7 +129,7 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
   freshness=math.exp(-age/10)
   weight=max(.02,query_relevance)*(.25+.75*freshness)
   items.append({**row,'id':group,'cluster_id':group,'age_days':round(age,1),'relevance':round(query_relevance,3),
-    'direction':round(direction,3),'weight':round(weight,5),'source_tier':row.get('source_tier','RSS_AGGREGATED_UNVERIFIED')})
+    'direction':round(direction,3),'weight':round(weight,5),'provenance_multiplier':provenance_multiplier,'source_tier':row.get('source_tier','RSS_AGGREGATED_UNVERIFIED')})
  # An independent source count is NOT measured from one aggregator.
  if len(items)<2:
   return {'version':1,'status':'UNAVAILABLE','reason_code':'INSUFFICIENT_RECENT_DISTINCT_STORIES',
@@ -146,7 +146,7 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
   'items':sorted(items,key=lambda x:x['weight'],reverse=True)[:24],'source_count':len(items),
   'independent_source_count':None,'coverage':coverage,'generated_at':now.isoformat(),
   'bayesian_forecast':event_bayesian.unavailable(),
-  'model':{'name':'solvai58-inspired-rss-evidence-share-v1','components':['recent RSS','query relevance','directional lexicon','deduplicated headlines'],
+  'model':{'name':'solvai58-inspired-rss-evidence-share-v2','components':['recent RSS','query relevance','directional lexicon','deduplicated headlines','explicit primary-source provenance uplift (heuristic)'],
    'calibrated_probability':False,'label':'Evidence-weighted share','warning':'Not a probability. News publication and sentiment are not proof of event outcomes.'},
   'probability_status':'UNAVAILABLE_NO_CALIBRATED_EVENT_MODEL'}
  with _lock:_cache[key]=(time.monotonic(),result)
