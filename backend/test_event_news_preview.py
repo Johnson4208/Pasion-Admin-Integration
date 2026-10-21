@@ -14,22 +14,22 @@ class LiveEventTests(unittest.TestCase):
   articles=[self.story('Oil supply disruption threatens markets'),
             self.story('Production recovers amid growing oil demand'),
             self.story('Supply stable with mixed demand')]
-  with patch.object(e,'fetch',return_value=articles):
+  with patch.object(e.event_feed_sources,'retrieve',return_value=(articles,{'region':'Vietnam','feed_successes':1})):
    r=e.analyze('Energy','Oil supply','Vietnam','30 days',self.now)
   self.assertEqual(r['status'],'EVIDENCE_AVAILABLE')
   self.assertAlmostEqual(sum(x['share_pct'] for x in r['outcomes']),100)
   self.assertFalse(r['model']['calibrated_probability'])
   self.assertIsNone(r['independent_source_count'])
  def test_missing_news_has_no_arbitrary_equal_baseline(self):
-  with patch.object(e,'fetch',return_value=[]):
+  with patch.object(e.event_feed_sources,'retrieve',return_value=([],{'region':'Vietnam','feed_successes':1})):
    r=e.analyze('Energy','Oil supply','Vietnam','30 days',self.now)
   self.assertEqual(r['status'],'UNAVAILABLE')
   self.assertEqual(r['outcomes'],[])
  def test_stale_and_duplicate_sources_withheld(self):
-  with patch.object(e,'fetch',return_value=[
+  with patch.object(e.event_feed_sources,'retrieve',return_value=([
     self.story('Oil supply disruption threatens markets',1),
     self.story('Oil supply disruption threatens markets',1,'Different outlet'),
-    self.story('Oil supply disruption threatens markets',50)]):
+    self.story('Oil supply disruption threatens markets',50)],{'region':'World','feed_successes':1})):
    r=e.analyze('Energy','Oil supply','', '30 days',self.now)
   self.assertEqual(r['source_count'],1)
   self.assertEqual(r['status'],'UNAVAILABLE')
@@ -37,6 +37,6 @@ class LiveEventTests(unittest.TestCase):
   with self.assertRaises(ValueError):e.analyze('Unknown','Factor')
   with self.assertRaises(ValueError):e.analyze('Energy','Oil supply','\nhttps://evil.local')
  def test_provider_failure_never_invents_articles(self):
-  with patch.object(e,'fetch',side_effect=e.Unavailable('NEWS_PROVIDER_UNREACHABLE')):
+  with patch.object(e.event_feed_sources,'retrieve',side_effect=e.event_feed_sources.FeedError('NEWS_PROVIDER_UNREACHABLE')):
    with self.assertRaises(e.Unavailable):e.analyze('Energy','Oil supply')
 if __name__=='__main__':unittest.main()
