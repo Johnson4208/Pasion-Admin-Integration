@@ -4,7 +4,9 @@ on:
     branches: [main]
     paths:
       - 'backend/event_news_preview.py'
+      - 'backend/event_feed_sources.py'
       - 'backend/test_event_news_preview.py'
+      - 'backend/test_event_feed_sources.py'
       - 'src/EventScenarios.jsx'
       - '.github/workflows/event-evidence.yml'
   pull_request:
@@ -21,7 +23,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run isolated event research tests
-        run: python -m unittest discover -s backend -p 'test_event_news_preview.py' -v
+        run: |
+          python -m unittest discover -s backend -p 'test_event_news_preview.py' -v
+          python -m unittest discover -s backend -p 'test_event_feed_sources.py' -v
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
