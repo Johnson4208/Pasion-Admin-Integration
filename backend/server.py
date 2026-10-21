@@ -31,6 +31,7 @@ import feasibility
 import portfolio_ledger
 import macro_evidence
 import event_research
+import event_news_preview
 import news_evidence
 import finance_ingestion
 import watch_events
@@ -833,6 +834,16 @@ class Handler(BaseHTTPRequestHandler):
             self.finance_stage_api();return
         if address in ('/api/research/news','/api/research/news/proposals','/api/admin/news/proposals'):
             self.news_api();return
+        if address=='/api/research/events/live':
+            if not self.current_session():
+                self.respond(401,{'message':'Please sign in again.'});return
+            try:
+                q=parse_qs(urlparse(self.path).query)
+                result=event_news_preview.analyze(q.get('category',[''])[0],q.get('factor',[''])[0],q.get('focus',[''])[0],q.get('horizon',['30 days'])[0])
+                self.respond(200,result)
+            except ValueError:self.respond(400,{'message':'Unsupported event research configuration.'})
+            except event_news_preview.Unavailable as exc:self.respond(503,{'status':'UNAVAILABLE','reason_code':str(exc),'items':[],'outcomes':[]})
+            return
         if address in ('/api/research/events','/api/research/events/evidence'):
             self.event_api();return
         if address in ('/api/research/macro','/api/research/commodity-exposures'):
