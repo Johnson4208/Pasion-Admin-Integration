@@ -11,6 +11,7 @@ from urllib.parse import urlencode,urlparse
 from urllib.request import Request,urlopen
 from urllib.error import URLError,HTTPError
 import event_feed_sources
+import event_bayesian
 
 _TOPICS={
  'Geopolitics': {'Conflict risk':('conflict escalation ceasefire regional security','conflict escalation ceasefire stability'),
@@ -128,11 +129,11 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
   freshness=math.exp(-age/10)
   weight=max(.02,query_relevance)*(.25+.75*freshness)
   items.append({**row,'id':group,'cluster_id':group,'age_days':round(age,1),'relevance':round(query_relevance,3),
-    'direction':round(direction,3),'weight':round(weight,5),'source_tier':'RSS_AGGREGATED_UNVERIFIED'})
+    'direction':round(direction,3),'weight':round(weight,5),'source_tier':row.get('source_tier','RSS_AGGREGATED_UNVERIFIED')})
  # An independent source count is NOT measured from one aggregator.
  if len(items)<2:
   return {'version':1,'status':'UNAVAILABLE','reason_code':'INSUFFICIENT_RECENT_DISTINCT_STORIES',
-   'items':items,'outcomes':[],'source_count':len(items),'independent_source_count':None,'coverage':coverage,
+   'items':items,'outcomes':[],'source_count':len(items),'independent_source_count':None,'coverage':coverage,'bayesian_forecast':event_bayesian.unavailable(),
    'calibrated_probability':False,'probability_status':'UNAVAILABLE_NO_CALIBRATED_EVENT_MODEL'}
  total=sum(x['weight'] for x in items)
  tilt=sum(x['direction']*x['weight'] for x in items)/total
@@ -144,6 +145,7 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
   'outcomes':[{'id':key,'share_pct':pct,'evidence_count':count} for key,pct,count in zip(('weakening','mixed','supportive'),shares,counts)],
   'items':sorted(items,key=lambda x:x['weight'],reverse=True)[:24],'source_count':len(items),
   'independent_source_count':None,'coverage':coverage,'generated_at':now.isoformat(),
+  'bayesian_forecast':event_bayesian.unavailable(),
   'model':{'name':'solvai58-inspired-rss-evidence-share-v1','components':['recent RSS','query relevance','directional lexicon','deduplicated headlines'],
    'calibrated_probability':False,'label':'Evidence-weighted share','warning':'Not a probability. News publication and sentiment are not proof of event outcomes.'},
   'probability_status':'UNAVAILABLE_NO_CALIBRATED_EVENT_MODEL'}
