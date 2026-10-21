@@ -11,6 +11,7 @@ import re
 import unicodedata
 from decimal import Decimal, InvalidOperation
 import financial_locale
+import financial_report_context
 
 VERSION="financial-index-v1"
 LABELS={
@@ -74,17 +75,19 @@ def number(cell):
 def scan(document):
  if document.get("status") not in (None,"ready","processing"):return {"version":VERSION,"status":"UNAVAILABLE","candidates":[],"warnings":["DOCUMENT_NOT_READY"]}
  candidates=[]
+ report_profile=financial_report_context.detect_profile(document)
  catalog=financial_locale.source_catalog(document)
  for section in (document.get("sections") or [])[:2000]:
   grid=section.get("table")
   if not isinstance(grid,list) or len(grid)<2:continue
   unit=financial_locale.identify(document,section,catalog)
+  statement_type=financial_report_context.statement_type(section)
   # Require explicit annual columns, not arbitrary line text or OCR guesses.
   columns={}
   header_row=None
   for row_idx,row in enumerate(grid[:3]):
    if not isinstance(row,list):continue
-   found={j:year_column(v) for j,v in enumerate(row) if j>0}
+   found={j:(financial_report_context.period_header(v) or ({'year':year_column(v),'period_type':'YEAR_UNSPECIFIED','period_end_hint':None,'status':'PERIOD_CANDIDATE_REQUIRES_FISCAL_CALENDAR'} if year_column(v) else None)) for j,v in enumerate(row) if j>0}
    found={j:y for j,y in found.items() if y}
    if found:
     header_row=row_idx;columns=found;break
@@ -93,7 +96,8 @@ def scan(document):
    if not isinstance(row,list) or not row:continue
    metric=exact_metric(row[0])
    if metric is None:continue
-   for col,year in columns.items():
+   for col,period in columns.items():
+    year=period['year']
     if col>=len(row):continue
     raw=str(row[col] or "").strip()
     value=financial_locale.parse_number(raw,unit['locale']) if unit['locale'] else number(raw)
@@ -103,7 +107,8 @@ def scan(document):
       "definition_id":metric,"value":value,"source_text":raw,
       "currency":unit['currency'],"scale":unit['scale'],"unit_status":unit['status'],"unit_evidence":unit['evidence'],
       "normalized_value":str(Decimal(value)*Decimal(unit['scale'])) if unit['scale'] is not None else None,
-      "year":year,"period_type":"INSTANT" if metric in STOCK else "FY",
+      "year":year,"period_type":"INSTANT" if metric in STOCK else period['period_type'],
+      "period_candidate":period,"statement_type":statement_type,
       "unit":"currency","section_id":section.get("id"),"page":section.get("page"),
       "table":str(section.get("title") or "Financial table")[:200],
       "row":row_idx,"column":col,"row_label":str(row[0])[:160],
@@ -116,7 +121,7 @@ def scan(document):
   for c in entries:c["ambiguous"]=len(entries)>1
  candidates=candidates[:500]
  return {"version":VERSION,"status":"CANDIDATES_FOUND" if candidates else "NO_EXPLICIT_FINANCIAL_TABLE_CANDIDATES",
-  "candidates":candidates,"candidate_count":len(candidates),
+  "candidates":candidates,"candidate_count":len(candidates),"report_profile":report_profile,
   "warnings":[ "No accepted facts have been created. Confirm issuer, fiscal calendar, currency, scale, accounting perimeter, source cells and publication time.",
                "OCR/text outside a year-headed table is not automatically promoted to a financial fact.",
                "Year headers do not prove a fiscal year ends on December 31.",
