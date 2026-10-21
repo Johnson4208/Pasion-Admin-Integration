@@ -21,6 +21,7 @@ import document_service
 import security
 import market_summary
 import finance_core
+import public_filing_demo
 import valuation
 import stock_models
 from market import technical
@@ -807,6 +808,14 @@ class Handler(BaseHTTPRequestHandler):
             except (sqlite3.Error,OSError):self.respond(503,{'message':'Health archive unavailable.'})
             return
         if address in ('/api/admin/distribution','/api/admin/distribution/monitor'):self.distribution_api();return
+        if address=='/api/research/examples/apple-2025':
+            if not self.current_session():
+                self.respond(401,{'message':'Please sign in again.'})
+                return
+            try:self.respond(200,public_filing_demo.calculate())
+            except (ValueError,KeyError,TypeError,ArithmeticError,sqlite3.Error,OSError) as exc:
+                self.respond(503,{'message':'Public filing demonstration unavailable.'})
+            return
         if address=='/api/research/watch':self.watch_api();return
         if address in ('/api/admin/finance/observations','/api/admin/finance/stages'):
             self.finance_stage_api();return
