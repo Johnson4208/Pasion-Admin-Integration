@@ -4,7 +4,9 @@ from datetime import datetime,timezone,timedelta
 import event_news_preview as e
 
 class LiveEventTests(unittest.TestCase):
- def setUp(self):self.now=datetime(2026,10,21,12,tzinfo=timezone.utc)
+ def setUp(self):
+  self.now=datetime(2026,10,21,12,tzinfo=timezone.utc)
+  with e._lock:e._cache.clear()
  def story(self,title,days=1,source='Newswire'):
   return {'title':title,'url':'https://news.google.com/a','source':source,'description':'Oil supply markets',
           'published_at':(self.now-timedelta(days=days)).isoformat()}
