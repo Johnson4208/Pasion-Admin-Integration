@@ -94,7 +94,7 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
    <div className="events-question-grid">
     <label>{t('Investment category')}<select value={category} onChange={e=>changeCategory(e.target.value)}>{Object.keys(categories).map(k=><option key={k}>{t(k)}</option>)}</select></label>
     <label>{t('Specific factor')}<select value={factor} onChange={e=>{setFactor(e.target.value);setResult(null)}}>{categories[category].map(k=><option key={k}>{t(k)}</option>)}</select></label>
-    <label>{t('Focus / entity')}<input value={focus} maxLength={120} onChange={e=>{setFocus(e.target.value);setResult(null)}} placeholder="Vietnam / United States / sector"/></label>
+    <label>{t('Focus / region / entity')}<input list="pasion-event-regions" value={focus} maxLength={120} onChange={e=>{setFocus(e.target.value);setResult(null)}} placeholder="World / Asia / Vietnam / United States / company"/><datalist id="pasion-event-regions">{['World','Asia','Southeast Asia','Vietnam','United States','Europe','Middle East','Africa','Latin America'].map(x=><option value={x} key={x}/>)}</datalist></label>
     <label>{t('Research horizon')}<select value={horizon} onChange={e=>{setHorizon(e.target.value);setResult(null)}}>{['7 days','30 days','90 days','180 days'].map(v=><option key={v}>{v}</option>)}</select></label>
     <button className="events-run-button" type="button" disabled={loading} onClick={runAnalysis}>{loading?'Loading sources…':t('Run event analysis')} <span aria-hidden="true">→</span></button>
    </div>
@@ -112,8 +112,8 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
      <p>{factor} · {focus||'Global'} · {horizon} · {new Date(result.generated_at).toLocaleString()}</p></div>
      <div className="events-result-actions"><div className="events-share-total"><strong>100%</strong><span>{t('RELATIVE EVIDENCE SHARES')}</span></div><button className="events-save-button" onClick={saveResearch}>☆ {t('Save this sourced research')}</button></div></header>
     <div className="events-kpi-grid">
-     <article><span>{t('EVIDENCE')}</span><strong>{result.source_count}</strong><small>{t('unique story clusters')}</small></article>
-     <article><span>{t('INDEPENDENT SOURCES')}</span><strong>—</strong><small>{t('Not established')}</small></article>
+     <article><span>{t('EVIDENCE')}</span><strong>{result.source_count}</strong><small>{t('unique story clusters')} · {result.coverage?.region||focus}</small></article>
+     <article><span>{t('FEED COVERAGE')}</span><strong>{result.coverage?.feed_successes??'—'} / {result.coverage?.requests??'—'}</strong><small>{t('successful source queries')}</small></article><article><span>{t('INDEPENDENT SOURCES')}</span><strong>—</strong><small>{t('Not established')}</small></article>
      <article><span>{t('EVIDENCE QUALITY')}</span><strong>{t('Unverified')}</strong><small>{t('RSS headlines & snippets')}</small></article>
      <article><span>{t('PROBABILITY')}</span><strong>—</strong><small>{t('Not calibrated')}</small></article>
     </div>
@@ -127,7 +127,7 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
        {expanded===item.key&&<div className="events-no-drivers">{result.items.filter(x=>item.key==='weakening'?x.direction<-.1:item.key==='supportive'?x.direction>.1:Math.abs(x.direction)<=.1).slice(0,5).map(x=><p key={x.id}><a href={x.url} target="_blank" rel="noopener noreferrer">{x.title}</a> · {x.source} · {new Date(x.published_at).toLocaleDateString()}</p>)}</div>}
       </article>})}</div>
    </section>
-   <section className="home-card events-logic-card"><h3>Methodology and limitations</h3>
+   <section className="home-card events-logic-card"><h3>Methodology and limitations</h3><p>Scope: {result.coverage?.region||'Not established'} · Results collected: {result.coverage?.raw_results??'—'} · Feeds: {(result.coverage?.providers||[]).join(', ')||'Unavailable'}</p>
     <p>Adapted from SolvAI58: deduplicated recent news, topical relevance, freshness and directional language. The model is deterministic, evidence-weighted and uncalibrated; it does not predict a verified outcome or generate trading instructions. All feed items are unreviewed proxies.</p>
     <p>Independent confirmation, official source verification and historical calibration remain unavailable. Missing evidence is not a 33.3% probability.</p>
    </section>
