@@ -32,6 +32,7 @@ import portfolio_ledger
 import macro_evidence
 import event_research
 import event_news_preview
+import event_agent_store
 import news_evidence
 import finance_ingestion
 import watch_events
@@ -834,6 +835,19 @@ class Handler(BaseHTTPRequestHandler):
             self.finance_stage_api();return
         if address in ('/api/research/news','/api/research/news/proposals','/api/admin/news/proposals'):
             self.news_api();return
+        if address=='/api/research/events/agent':
+            if not self.current_session():
+                self.respond(401,{'message':'Please sign in again.'});return
+            q=parse_qs(urlparse(self.path).query)
+            try:
+                category=q.get('category',[''])[0];factor=q.get('factor',[''])[0]
+                focus=q.get('focus',['World'])[0];horizon=q.get('horizon',['30 days'])[0]
+                if factor not in event_news_preview._TOPICS.get(category,{}) or horizon not in ('7 days','30 days','90 days','180 days'):
+                    raise ValueError('Invalid research watch')
+                self.respond(200,event_agent_store.read(category,factor,focus,horizon))
+            except (ValueError,TypeError,OverflowError):
+                self.respond(400,{'message':'Invalid event intelligence watch.'})
+            return
         if address=='/api/research/events/live':
             if not self.current_session():
                 self.respond(401,{'message':'Please sign in again.'});return
