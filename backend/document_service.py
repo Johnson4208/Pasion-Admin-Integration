@@ -218,7 +218,11 @@ def _extraction_worker(root, document_id, token):
             return
         _update_processing(root, document_id, token, processingStage='extracting')
         extracted = extract_document(document['name'], row[1])
-        extracted['financial_index'] = financial_auto_index.scan(extracted)
+        try:
+            extracted['financial_index'] = financial_auto_index.scan(extracted)
+        except (ValueError, TypeError, KeyError, ArithmeticError):
+            # Optional classification failures never destroy a successfully extracted document.
+            extracted['financial_index'] = {'version':'financial-index-v1','status':'INDEX_UNAVAILABLE','candidate_count':0,'candidates':[],'warnings':['Financial indexing failed; extracted document remains searchable.']}
         _update_processing(root, document_id, token, **extracted,
                            status='ready', processingStage='complete', error=None)
     except DocumentError as error:
