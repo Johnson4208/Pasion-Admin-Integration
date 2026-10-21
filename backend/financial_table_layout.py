@@ -42,6 +42,7 @@ def headers(grid):
   kinds={p["period_type"] for _,p in candidates if p["period_type"] not in ("YEAR_UNSPECIFIED","PERIOD_END_UNSPECIFIED")}
   qtokens={q for _,v in parts if (q:=_quarter(v)) is not None}
   ytd=any(_ytd(v) for _,v in parts)
+  fy=any(context.fold(v) in ("fy","fiscal year","annual") for _,v in parts)
   if len(kinds)>1 or len(qtokens)>1:
    issues.append({"column":col,"code":"CONFLICTING_FISCAL_PERIOD"});continue
   period=dict(candidates[-1][1])
@@ -52,6 +53,10 @@ def headers(grid):
    period["period_type"]="Q";period["quarter"]=next(iter(qtokens))
   elif ytd:
    period["period_type"]="YTD"
+  elif fy:
+   period["period_type"]="FY"
+  if fy and (qtokens or ytd):
+   issues.append({"column":col,"code":"FY_VS_INTERIM_HEADER"});continue
   if ytd and period["period_type"] not in ("YTD",):
    issues.append({"column":col,"code":"QUARTER_VS_CUMULATIVE_HEADER"});continue
   if qtokens and period.get("quarter") not in (None,next(iter(qtokens))):
@@ -62,8 +67,8 @@ def headers(grid):
   period["status"]="PERIOD_CANDIDATE_REQUIRES_FISCAL_CALENDAR"
   columns[col]=period
   last=max(last,max(idx for idx,_ in candidates))
-  if (qtokens or ytd) and parts:
-   last=max(last,max(idx for idx,v in parts if _quarter(v) or _ytd(v)))
+  if (qtokens or ytd or fy) and parts:
+   last=max(last,max(idx for idx,v in parts if _quarter(v) or _ytd(v) or context.fold(v) in ("fy","fiscal year","annual")))
  if not columns:return {},None,issues or ["NO_EXPLICIT_YEAR_COLUMN"]
  # Do not interpret a preceding row of labels as financial numeric data.
  return columns,last,issues
