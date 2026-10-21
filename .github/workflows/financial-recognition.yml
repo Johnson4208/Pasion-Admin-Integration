@@ -25,6 +25,7 @@ jobs:
           python -m unittest discover -s backend -p 'test_financial_auto_index.py' -v
           python -m unittest discover -s backend -p 'test_financial_locale.py' -v
           python -m unittest discover -s backend -p 'test_financial_report_context.py' -v
+          python -m unittest discover -s backend -p 'test_financial_table_layout.py' -v
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
