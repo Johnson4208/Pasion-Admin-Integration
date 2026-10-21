@@ -361,3 +361,28 @@
 @media(prefers-reduced-motion:reduce) {
   .event-scenarios-page * { scroll-behavior: auto!important; transition: none!important; }
 }
+
+
+/* Dynamic Scenario Board — research support, not calibrated forecasts */
+.events-dynamic-board{margin-top:20px;display:grid;gap:15px}
+.events-dynamic-top{display:flex;justify-content:space-between;align-items:start;gap:16px;flex-wrap:wrap}
+.events-dynamic-top h3{margin:4px 0 0;font-size:21px;color:#123558}
+.events-dynamic-top p,.events-ranked-note{color:#617b9b;font-size:13px;line-height:1.5;margin:5px 0}
+.events-horizon-switch{display:flex;gap:5px;background:#edf3fa;border-radius:8px;padding:4px}
+.events-horizon-switch button{border:0;background:transparent;color:#315b84;border-radius:6px;padding:8px 13px;cursor:pointer;font-weight:650}
+.events-horizon-switch button.is-active{background:#2468f2;color:white}
+.events-ranked-list{display:grid;gap:9px}
+.events-ranked-item{display:flex;gap:14px;border:1px solid #dce6f2;border-radius:10px;padding:13px 15px;background:white}
+.events-rank-number{flex:none;color:#6783a0;font-weight:750;width:24px}
+.events-rank-main{flex:1;min-width:0}
+.events-rank-heading,.events-rank-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.events-rank-heading strong{font-size:14px;color:#183b5c}
+.events-rank-value{font-size:12px;font-weight:700;color:#2468f2}
+.events-rank-main p{margin:5px 0 8px;font-size:12px}
+.events-ranked-track{height:7px;background:#e9eef5;border-radius:9px;overflow:hidden}
+.events-ranked-track i{height:100%;background:#4b86ce;display:block;border-radius:9px}
+.events-rank-foot{font-size:11px;color:#6c8195;margin-top:8px}
+.events-rank-foot button{border:0;color:#2864aa;background:transparent;cursor:pointer;font-weight:700}
+.events-rank-sources{background:#f4f8fd;border:1px solid #dce6f2;padding:10px 12px;margin-top:8px;border-radius:8px}
+.events-rank-sources p{margin:6px 0;overflow-wrap:anywhere}
+@media(max-width:750px){.events-dynamic-top{display:grid}.events-rank-heading{align-items:flex-start}.events-horizon-switch{width:max-content}}
