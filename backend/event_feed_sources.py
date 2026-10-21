@@ -16,7 +16,7 @@ from urllib.error import HTTPError,URLError
 from urllib.parse import urlencode,urlsplit
 from urllib.request import HTTPRedirectHandler,Request,build_opener
 
-# One user's search fans out to at most 5 fixed provider requests.
+# One user's search fans out to at most 6 fixed provider requests.
 MAX_RESP=1_300_000
 _REGION_ALIASES={
  "world":("World","",None), "global":("World","",None),
@@ -65,7 +65,7 @@ def _text(value):
 
 def _get(url,accept):
  parsed=urlsplit(url)
- if (parsed.scheme!='https' or parsed.hostname not in ('news.google.com','api.gdeltproject.org')
+ if (parsed.scheme!='https' or parsed.hostname not in ('news.google.com','api.gdeltproject.org','www.federalreserve.gov')
      or parsed.port not in (None,443) or parsed.username or parsed.password):
   raise FeedError("UNTRUSTED_PROVIDER")
  req=Request(url,headers={'User-Agent':'Pasion-Research/1.1 (public news search)','Accept':accept})
@@ -139,17 +139,39 @@ def _variants(topic_terms,focus,location):
          ((topic+' '+geographical).strip(),('en-SG','SG','SG:en')),
          ((topic+' '+geographical).strip(),('vi-VN','VN','VN:vi'))]
 
+def _fed_official():
+ # A directly published Federal Reserve RSS channel; unlike aggregators, provenance
+ # is the publishing institution itself. Other topics do not use this source.
+ address='https://www.federalreserve.gov/feeds/press_monetary.xml'
+ try:root=ET.fromstring(_get(address,'application/rss+xml, application/xml'))
+ except ET.ParseError as exc:raise FeedError('FED_RSS_PARSE_FAILED') from exc
+ results=[];now=datetime.now(timezone.utc)
+ for node in root.findall('.//channel/item')[:50]:
+  title=_text(node.findtext('title'))
+  link=str(node.findtext('link') or '').strip()
+  if urlsplit(link).hostname not in ('www.federalreserve.gov','federalreserve.gov'):continue
+  try:published=parsedate_to_datetime(node.findtext('pubDate') or '').astimezone(timezone.utc)
+  except (TypeError,ValueError,OverflowError,AttributeError):continue
+  if not title or published>now:continue
+  results.append({'title':title,'url':link,'source':'Board of Governors of the Federal Reserve System',
+   'published_at':published.isoformat(),'description':_text(node.findtext('description')),
+   'provider':'Federal Reserve official RSS','time_basis':'PUBLISHED','edition':'US',
+   'source_tier':'PRIMARY_OFFICIAL_UNVERIFIED_CLAIM'})
+ return results
+
 def retrieve(topic_terms,focus):
  region=geography(focus)
  jobs=[('Google News RSS',query,edition) for query,edition in _variants(topic_terms,focus,region)]
  gdeltquery=(' '.join(re.findall(r"[A-Za-z]+",topic_terms)[:2])+' '+region[1]).strip()
  jobs.append(('GDELT DOC 2.0',gdeltquery,None))
+ if any(word in topic_terms.lower() for word in ('central bank','interest rates','inflation','credit conditions','mortgage rates','monetary policy')):
+  jobs.append(('Federal Reserve official RSS','',None))
  results=[];failed=[];succeeded=0
  def job(spec):
   name,q,edition=spec
-  try:return name,(_gdelt(q) if edition is None else _rss(q,edition)),None
+  try:return name,(_fed_official() if name=='Federal Reserve official RSS' else _gdelt(q) if edition is None else _rss(q,edition)),None
   except (FeedError,ValueError,TypeError,KeyError) as e:return name,[],getattr(e,'args',['PROVIDER_ERROR'])[0]
- with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+ with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
   futures=[pool.submit(job,s) for s in jobs]
   for future in concurrent.futures.as_completed(futures):
    name,items,issue=future.result()
