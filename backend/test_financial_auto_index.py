@@ -16,7 +16,10 @@ class FinancialAutoIndexTests(unittest.TestCase):
  def test_no_autopromotion_of_ambiguous_period_or_ocr_numbers(self):
   doc={"sections":[{"id":"s","page":1,"text":"Revenue 120 million in 2025"},{
    "id":"t","page":2,"table":[["Metric","Q2 2025"],["Revenue","999"]]}]}
-  self.assertEqual(i.scan(doc)["candidate_count"],0)
+  classified=i.scan(doc)
+  self.assertEqual(classified["candidate_count"],1)
+  self.assertEqual(classified["candidates"][0]["period_type"],"Q")
+  self.assertEqual(classified["candidates"][0]["period_candidate"]["status"],"PERIOD_CANDIDATE_REQUIRES_FISCAL_CALENDAR")
   self.assertIsNone(i.number("1,2O0"))
   self.assertIsNone(i.number("1.200,00"))
  def test_duplicate_metrics_marked_ambiguous(self):
