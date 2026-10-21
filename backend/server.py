@@ -32,6 +32,7 @@ import portfolio_ledger
 import macro_evidence
 import event_research
 import event_news_preview
+import event_horizons
 import event_agent_store
 import news_evidence
 import finance_ingestion
@@ -842,7 +843,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 category=q.get('category',[''])[0];factor=q.get('factor',[''])[0]
                 focus=q.get('focus',['World'])[0];horizon=q.get('horizon',['30 days'])[0]
-                if factor not in event_news_preview._TOPICS.get(category,{}) or horizon not in ('7 days','30 days','90 days','180 days'):
+                if factor not in event_news_preview._TOPICS.get(category,{}) or horizon not in event_horizons.HORIZONS:
                     raise ValueError('Invalid research watch')
                 self.respond(200,event_agent_store.read(category,factor,focus,horizon))
             except (ValueError,TypeError,OverflowError):
