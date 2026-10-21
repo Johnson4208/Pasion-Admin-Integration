@@ -28,6 +28,13 @@ export default function FinanceDocumentDesk({document}){
  return <details className="finance-document-desk"><summary>{t('Financial observation review')}</summary><p>{t('Review issuer identity, source coordinates and accounting meaning. Extraction quality does not establish accounting validity.')}</p>
  {document.financial_index&&<section className="finance-auto-index" aria-label="Automatically indexed financial candidates">
   <h4>Automatically indexed financial candidates</h4>
+  {document.financial_index.report_profile&&<div className="finance-report-profile">
+   <p><strong>Report accounting profile (unreviewed):</strong> {document.financial_index.report_profile.standard?.value||'Standard unknown'} · {document.financial_index.report_profile.scope?.value||'Scope unknown'} · {document.financial_index.report_profile.issuer?.value||'Issuer unknown'}</p>
+   <p>Statements: {(document.financial_index.report_profile.statement_types||[]).join(', ')||'Unclassified'} · Review required before accepting any observation</p>
+   {['standard','scope','issuer'].map(k=><details key={k}><summary>{k}: {document.financial_index.report_profile[k]?.status||'UNKNOWN'}</summary>
+    {(document.financial_index.report_profile[k]?.evidence||[]).map((v,i)=><p key={i}>{v.value} · section {v.source}</p>)}
+   </details>)}
+  </div>}
   <p>{document.financial_index.status} · {document.financial_index.candidate_count||0} possible source cells. These are NOT approved accounting facts.</p>
   {(document.financial_index.candidates||[]).length>0&&<div style={{overflowX:'auto'}}><table><thead><tr><th>Metric</th><th>Year</th><th>Source</th><th>Value as printed</th><th>Review</th></tr></thead><tbody>
   {document.financial_index.candidates.map(item=><tr key={item.id}><td>{item.definition_id}{item.ambiguous&&' · Ambiguous'}</td><td>{item.year}</td><td>{item.table} · p. {item.page??'—'} · [{item.row},{item.column}]</td><td>{item.source_text}<small style={{display:'block'}}>{item.currency&&item.scale?`${item.normalized_value} ${item.currency} · scale ×${item.scale}`:`Currency/scale: ${item.unit_status}`}</small></td><td><button type="button" disabled={busy} onClick={()=>pickCandidate(item)}>Inspect source cell</button></td></tr>)}
