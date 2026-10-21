@@ -140,7 +140,7 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
  # An independent source count is NOT measured from one aggregator.
  if len(items)<2:
   return {'version':1,'status':'UNAVAILABLE','reason_code':'INSUFFICIENT_RECENT_DISTINCT_STORIES',
-   'items':items,'outcomes':[],'horizon_info':horizon_info,'dynamic_scenarios:event_scenario_board.candidates(items,factor,focus,horizon),'source_count':len(items),'independent_source_count':None,'coverage':coverage,'bayesian_forecast':event_bayesian.unavailable(),
+   'items':items,'outcomes':[],'horizon_info':horizon_info,'dynamic_scenarios':event_scenario_board.candidates(items,factor,focus,horizon),'source_count':len(items),'independent_source_count':None,'coverage':coverage,'bayesian_forecast':event_bayesian.unavailable(),
    'calibrated_probability':False,'probability_status':'UNAVAILABLE_NO_CALIBRATED_EVENT_MODEL'}
  total=sum(x['weight'] for x in items)
  tilt=sum(x['direction']*x['weight'] for x in items)/total
