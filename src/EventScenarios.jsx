@@ -111,7 +111,7 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
   <section className="home-card events-result-card events-ranking-shell" aria-label="Scenario ranking" aria-busy={loading}>
    <div className="events-ranking-heading"><div><span className="events-section-kicker">SCENARIO OUTLOOK / {term==='short'?'SHORT-TERM':'LONG-TERM'}</span><h2>Ranked scenario pathways</h2>
     <p>{factor} · {focus||'World'} · {HORIZONS[term].find(x=>x[0]===horizon)?.[1]}</p></div>
-    <div className="events-ranking-actions"><span className="events-model-flag">{probabilityAllowed?'Model-validated probability':'Probability not calibrated'}</span>
+    <div className="events-ranking-actions"><span className="events-model-flag">{probabilityAllowed?'Validated model':'Experimental estimate · uncalibrated'}</span>
       <button type="button" onClick={()=>setEvidenceOpen({id:null,sources:result?.items||[]})} disabled={!result?.items?.length}>Evidence <span aria-hidden="true">↗</span></button>
       <button type="button" disabled={!ready} onClick={saveResearch}>Save research</button>
     </div></div>
@@ -119,19 +119,20 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
    <div className="events-ranked-list">
     {(ranked.length?ranked:Array.from({length:10},(_,i)=>({id:'pending-'+i,rank:i+1,title:'Awaiting research',status:'PENDING_EVIDENCE',sources:[],support_index:null}))).map(sc=>{
       const old=oldRanked.find(x=>x.id===sc.id);
-      const p=probabilityAllowed?result.bayesian_forecast.posterior?.[sc.id]:null;
+      const p=probabilityAllowed?result.bayesian_forecast.posterior?.[sc.id]:sc.experimental_probability?.probability_estimate;
+      const experimental=!probabilityAllowed&&typeof p==='number';
       const delta=old?.support_index!=null&&sc.support_index!=null?Math.round(100*(sc.support_index-old.support_index)):null;
       return <article key={sc.id} className="events-ranked-item">
        <span className="events-rank-number">{String(sc.rank).padStart(2,'0')}</span>
-       <div className="events-rank-main"><div className="events-rank-heading"><div><strong>{sc.title}</strong><p>{sc.definition||'Start an analysis to evaluate this pathway.'}</p></div><span className="events-rank-value">{typeof p==='number'?(p*100).toFixed(1)+'%':'—'}</span></div>
-        <div className="events-ranked-track" role="img" aria-label={typeof p==='number'?'Calibrated probability '+(p*100).toFixed(1)+' percent':'Calibrated probability unavailable'}><i style={{width:typeof p==='number'?Math.max(0,Math.min(100,p*100))+'%':'0%'}}/></div>
-        <div className="events-rank-foot"><span>{typeof p==='number'?'Model probability':sc.status==='PENDING_EVIDENCE'?'Awaiting relevant evidence':'Probability pending validation'} · {sc.supporting_source_count||0} linked sources {delta===null?'':' · evidence change '+(delta>0?'+':'')+delta+' pts'}</span>
+       <div className="events-rank-main"><div className="events-rank-heading"><div><strong>{sc.title}</strong><p>{sc.definition||'Start an analysis to evaluate this pathway.'}</p></div><span className="events-rank-value" title={experimental?`Assumed prior 50%; sensitivity to priors 25–75%: ${(sc.experimental_probability.prior_sensitivity_range[0]*100).toFixed(1)}%–${(sc.experimental_probability.prior_sensitivity_range[1]*100).toFixed(1)}%; not calibrated`:undefined}>{typeof p==='number'?(p*100).toFixed(1)+'%'+(experimental?'*':''):'—'}</span></div>
+        <div className="events-ranked-track" role="img" aria-label={typeof p==='number'?''Estimated probability '+(p*100).toFixed(1)+' percent':'Calibrated probability unavailable'}><i style={{width:typeof p==='number'?Math.max(0,Math.min(100,p*100))+'%':'0%'}}/></div>
+        <div className="events-rank-foot"><span>{typeof p==='number'?(experimental?'Experimental estimate · prior 50%, uncalibrated':'Validated model probability'):sc.status==='PENDING_EVIDENCE'?'Awaiting relevant evidence':'Probability unavailable'} · {sc.supporting_source_count||0} linked sources {delta===null?'':' · evidence change '+(delta>0?'+':'')+delta+' pts'}</span>
          <button type="button" onClick={()=>setEvidenceOpen({id:sc.id,title:sc.title,sources:sc.sources||[]})}>Evidence <span aria-hidden="true">↗</span></button></div>
        </div>
       </article>;
     })}
    </div>
-   <p className="events-ranked-note">Probabilities are shown only for scenarios supported by a validated outcome model. Unverified article weights are never relabeled as probabilities. Paths may overlap and do not have to total 100%.</p>
+   <p className="events-ranked-note">* Experimental estimates use an assumed 50% prior, limited headline evidence and a fixed log-odds update; they are NOT calibrated probabilities. Tap Evidence for sources. Paths can overlap and do not have to total 100%.</p>
    {loading&&<div className="events-loading-overlay" role="status" aria-live="polite"><div className="events-loading-spinner" aria-hidden="true"/><strong>Analyzing new evidence</strong><span>Retrieving sources and comparing scenario pathways…</span></div>}
   </section>
   {result?.status==='UNAVAILABLE'&&!loading&&<p className="events-muted-notice">{result.reason_code||'Insufficient relevant news'}. Scenario probabilities are withheld.</p>}
