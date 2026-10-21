@@ -9,6 +9,8 @@ class ScenarioBoardTests(unittest.TestCase):
   self.assertEqual(len(r['ranked_scenarios']),10)
   self.assertEqual([x['rank'] for x in r['ranked_scenarios']],list(range(1,11)))
   self.assertTrue(all(x['probability'] is None for x in r['ranked_scenarios']))
+  self.assertTrue(any(x['experimental_probability'] is not None for x in r['ranked_scenarios']))
+  self.assertTrue(all(x['experimental_probability'] is None or x['experimental_probability']['calibrated'] is False for x in r['ranked_scenarios']))
   self.assertTrue(r['hypotheses_overlap'])
   self.assertEqual(r['timeframe'],'SHORT_TERM')
  def test_long_term_and_no_evidence(self):
@@ -16,5 +18,6 @@ class ScenarioBoardTests(unittest.TestCase):
   self.assertEqual(r['timeframe'],'LONG_TERM')
   self.assertTrue(all(x['support_index'] is None for x in r['ranked_scenarios']))
   self.assertTrue(all(x['status']=='PENDING_EVIDENCE' for x in r['ranked_scenarios']))
+  self.assertTrue(all(x['experimental_probability'] is None for x in r['ranked_scenarios']))
 
 if __name__=='__main__':unittest.main()
