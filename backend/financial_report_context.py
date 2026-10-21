@@ -96,7 +96,7 @@ def period_header(raw):
 def statement_type(section):
  heading=fold(str(section.get("title") or ""))
  matches=[]
- for name,pattern in (("income_statement",r"(income statement|statement of operations|ket qua hoat dong kinh doanh)"),
+ for name,pattern in (("income_statement",r"(income statements?|statements? of operations|ket qua hoat dong kinh doanh)"),
                       ("balance_sheet",r"(balance sheet|financial position|bang can doi ke toan)"),
                       ("cash_flow",r"(cash flow|luu chuyen tien te)")):
   if re.search(pattern,heading):matches.append(name)
