@@ -53,9 +53,19 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
  const [loading,setLoading]=useState(false),[result,setResult]=useState(null),[error,setError]=useState('');
  const [expanded,setExpanded]=useState('');
  const [previousResult,setPreviousResult]=useState(null);
+ const [agent,setAgent]=useState(null);
  const [studies,setStudies]=useState(()=>readStudies(savedKey));
  const [activeHistoryTab,setActiveHistoryTab]=useState('History');
  useEffect(()=>{try{localStorage.setItem(savedKey,JSON.stringify(studies))}catch{}},[savedKey,studies]);
+ useEffect(()=>{
+  let active=true;
+  const params=new URLSearchParams({category,factor,focus:focus.trim(),horizon});
+  fetch('/api/research/events/agent?'+params.toString(),{credentials:'same-origin'})
+   .then(r=>r.ok?r.json():Promise.reject(Error('Agent not available')))
+   .then(data=>{if(active)setAgent(data)})
+   .catch(()=>{if(active)setAgent(null)});
+  return()=>{active=false};
+ },[category,factor,focus,horizon,result]);
  const names=outcomeNames(factor);
  const visibleStudies=activeHistoryTab==='Saved'?studies.filter(s=>s.saved):studies;
  function changeCategory(value){setCategory(value);setFactor(categories[value][0]);setResult(null);setError('');}
@@ -153,6 +163,16 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
     {result.items.map(x=><article key={x.id} style={{padding:'12px 0',borderBottom:'1px solid #e3eaf0'}}><a href={x.url} target="_blank" rel="noopener noreferrer"><strong>{x.title}</strong> ↗</a><p>{x.source} · {new Date(x.published_at).toLocaleString()} · Relevance {x.relevance} · Model weight {x.weight} · Direction {x.direction}</p><small>{x.description}</small></article>)}
    </section>
   </>}
+  <section className="home-card events-agent-history" aria-label="Independent event intelligence history">
+   <header><span className="events-section-kicker">INDEPENDENT EVENT INTELLIGENCE AGENT</span><h3>Automatic source monitoring & version history</h3></header>
+   <p>The agent uses separate public-news storage, never account memory or personal data. Its history exists only after the agent has polled this exact research question.</p>
+   <p>Status: <strong>{agent?.status||'Agent unavailable'}</strong> · Last scan: {agent?.last_poll?.checked_at?new Date(agent.last_poll.checked_at).toLocaleString():'Not yet scanned'} · Last result: {agent?.last_poll?.status||'—'}</p>
+   {agent?.latest&&<div><h4>Latest recorded revision #{agent.latest.id}</h4><p>Recorded: {new Date(agent.latest.created_at).toLocaleString()} · {(agent.latest.changes?.added_source_ids||[]).length} newly observed sources</p>
+    <details><summary>Change from preceding version</summary>
+      {(agent.latest.changes?.scenario_changes||[]).slice(0,10).map(s=><p key={s.id}>{s.id}: rank {s.previous_rank??'—'} → {s.current_rank}; support {s.previous_support_index??'—'} → {s.current_support_index??'—'}</p>)}
+    </details></div>}
+   <div>{(agent?.versions||[]).map(v=><details key={v.id}><summary>Version #{v.id} · {new Date(v.created_at).toLocaleString()} · {v.changes?.change_type}</summary><p>{v.snapshot?.source_count||0} source story clusters. {v.changes?.added_source_ids?.length||0} new, {v.changes?.removed_source_ids?.length||0} removed.</p></details>)}</div>
+  </section>
   <section className="home-card events-forecast-lab"><header className="events-lab-heading"><div><span className="events-section-kicker">FORECAST LAB</span><h3>Research archive (browser local)</h3><p>Save an immutable source snapshot for later review. Archived weights are not calibrated forecasts.</p></div><div className="events-history-tabs" role="tablist"><button type="button" role="tab" aria-selected={activeHistoryTab==='History'} onClick={()=>setActiveHistoryTab('History')}>History</button><button type="button" role="tab" aria-selected={activeHistoryTab==='Saved'} onClick={()=>setActiveHistoryTab('Saved')}>Saved ({studies.filter(s=>s.saved).length})</button></div></header>
    <div className="events-history-list">{visibleStudies.map(s=><article key={s.id} className="events-history-item"><header><div><strong>{s.factor} · {s.focus}</strong><p>{new Date(s.createdAt).toLocaleString()} · {s.horizon}</p><small>Uncalibrated source snapshot</small></div><div className="events-history-actions"><button onClick={()=>updateStudy(s.id,'saved',!s.saved)}>{s.saved?'★':'☆'}</button><button onClick={()=>setStudies(cur=>cur.filter(x=>x.id!==s.id))}>×</button></div></header>{s.research?.items?.length>0&&<details><summary>Source snapshot · {s.research.items.length} stories</summary>{s.research.items.map(x=><p key={x.url}><a href={x.url} target="_blank" rel="noopener noreferrer">{x.title}</a></p>)}</details>}<label>Research note <input value={s.note||''} onChange={e=>updateStudy(s.id,'note',e.target.value)}/></label></article>)}</div>
   </section>
