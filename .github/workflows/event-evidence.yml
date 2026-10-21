@@ -6,6 +6,7 @@ on:
       - 'backend/event_news_preview.py'
       - 'backend/event_feed_sources.py'
       - 'backend/event_bayesian.py'
+      - 'backend/event_experimental_probability.py'
       - 'backend/event_scenario_board.py'
       - 'backend/event_horizons.py'
       - 'backend/event_agent.py'
