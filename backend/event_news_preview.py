@@ -12,6 +12,7 @@ from urllib.request import Request,urlopen
 from urllib.error import URLError,HTTPError
 import event_feed_sources
 import event_bayesian
+import event_scenario_board
 
 _TOPICS={
  'Geopolitics': {'Conflict risk':('conflict escalation ceasefire regional security','conflict escalation ceasefire stability'),
@@ -134,7 +135,7 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
  # An independent source count is NOT measured from one aggregator.
  if len(items)<2:
   return {'version':1,'status':'UNAVAILABLE','reason_code':'INSUFFICIENT_RECENT_DISTINCT_STORIES',
-   'items':items,'outcomes':[],'source_count':len(items),'independent_source_count':None,'coverage':coverage,'bayesian_forecast':event_bayesian.unavailable(),
+   'items':items,'outcomes':[],'dynamic_scenarios':event_scenario_board.candidates(items,factor,focus,horizon),'source_count':len(items),'independent_source_count':None,'coverage':coverage,'bayesian_forecast':event_bayesian.unavailable(),
    'calibrated_probability':False,'probability_status':'UNAVAILABLE_NO_CALIBRATED_EVENT_MODEL'}
  total=sum(x['weight'] for x in items)
  tilt=sum(x['direction']*x['weight'] for x in items)/total
@@ -147,6 +148,7 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
   'items':sorted(items,key=lambda x:x['weight'],reverse=True)[:24],'source_count':len(items),
   'independent_source_count':None,'coverage':coverage,'generated_at':now.isoformat(),
   'bayesian_forecast':event_bayesian.unavailable(),
+  'dynamic_scenarios':event_scenario_board.candidates(items,factor,focus,horizon),
   'model':{'name':'solvai58-inspired-rss-evidence-share-v2','components':['recent RSS','query relevance','directional lexicon','deduplicated headlines','explicit primary-source provenance uplift (heuristic)'],
    'calibrated_probability':False,'label':'Evidence-weighted share','warning':'Not a probability. News publication and sentiment are not proof of event outcomes.'},
   'probability_status':'UNAVAILABLE_NO_CALIBRATED_EVENT_MODEL'}
