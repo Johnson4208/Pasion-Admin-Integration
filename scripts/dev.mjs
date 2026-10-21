@@ -46,4 +46,5 @@ function launch(label, executable, args) {
 process.once('SIGINT', () => stop());
 process.once('SIGTERM', () => stop());
 launch('Backend', python, ['-X', 'utf8', 'backend/server.py']);
+if (process.env.PASION_EVENT_AGENT_ENABLED === '1') launch('Event Intelligence Agent', python, ['-X', 'utf8', 'backend/event_agent.py', '--interval-minutes', process.env.PASION_EVENT_POLL_MINUTES || '30']);
 launch('Frontend', process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--strictPort']);
