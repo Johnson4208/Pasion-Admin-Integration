@@ -7,6 +7,8 @@ on:
       - 'backend/event_feed_sources.py'
       - 'backend/event_bayesian.py'
       - 'backend/event_experimental_probability.py'
+      - 'backend/event_topic_matcher.py'
+      - 'backend/test_event_topic_matcher.py'
       - 'backend/event_scenario_board.py'
       - 'backend/event_horizons.py'
       - 'backend/event_agent.py'
@@ -35,6 +37,7 @@ jobs:
       - name: Run isolated event research tests
         run: |
           python -m unittest discover -s backend -p 'test_event_news_preview.py' -v
+          python -m unittest discover -s backend -p 'test_event_topic_matcher.py' -v
           python -m unittest discover -s backend -p 'test_event_feed_sources.py' -v
           python -m unittest discover -s backend -p 'test_event_bayesian.py' -v
           python -m unittest discover -s backend -p 'test_event_scenario_board.py' -v
