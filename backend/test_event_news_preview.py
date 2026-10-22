@@ -32,7 +32,8 @@ class LiveEventTests(unittest.TestCase):
     self.story('Oil supply disruption threatens markets',50)],{'region':'World','feed_successes':1})):
    r=e.analyze('Energy','Oil supply','', '30 days',self.now)
   self.assertEqual(r['source_count'],1)
-  self.assertEqual(r['status'],'UNAVAILABLE')
+  self.assertEqual(r['status'],'EVIDENCE_AVAILABLE')
+  self.assertEqual(r['evidence_sufficiency'],'SINGLE_SOURCE_LOW')
  def test_unsupported_topic_and_focus_rejected(self):
   with self.assertRaises(ValueError):e.analyze('Unknown','Factor')
   with self.assertRaises(ValueError):e.analyze('Energy','Oil supply','\nhttps://evil.local')
