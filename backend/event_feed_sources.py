@@ -203,9 +203,9 @@ def _port_report_vietnam():
   full=' '.join(parser.parts)
   # Restrict to a local paragraph, not the entire global market report.
   segments=[]
-  for m in re.finditer(r'\\bVietnam\\b',full,re.I):
+  for m in re.finditer(r'\bVietnam\b',full,re.I):
    excerpt=full[m.end():m.end()+650]
-   if re.search(r'\\b(?:Cat Lai|Vung Tau|Gemalink|Ho Chi Minh City|Cai Mep)\\b',excerpt,re.I):
+   if re.search(r'\b(?:Cat Lai|Vung Tau|Gemalink|Ho Chi Minh City|Cai Mep)\b',excerpt,re.I):
     segments.append(excerpt)
   if not segments:continue
   content=segments[-1]
