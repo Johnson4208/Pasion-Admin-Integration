@@ -67,6 +67,7 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
  const ranked=result?.dynamic_scenarios?.ranked_scenarios||[];
  const oldRanked=previousResult?.dynamic_scenarios?.ranked_scenarios||[];
  const probabilityAllowed=Boolean(result?.bayesian_forecast?.status==='CALIBRATED_MODEL_ELIGIBLE');
+ const noEligible=!!result&&!loading&&(!result.source_count||result.status==='UNAVAILABLE');
  function changeTerm(value){setTerm(value);setHorizon(value==='short'?'30 days':'180 days');setResult(null);setError('');}
  function changeCategory(value){setCategory(value);setFactor(categories[value][0]);setResult(null);}
  async function runAnalysis(){
@@ -115,8 +116,9 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
       <button type="button" onClick={()=>setEvidenceOpen({id:null,sources:result?.items||[]})} disabled={!result?.items?.length}>Evidence <span aria-hidden="true">↗</span></button>
       <button type="button" disabled={!ready} onClick={saveResearch}>Save research</button>
     </div></div>
-   <div className="events-ranking-stats"><div><span>Eligible stories</span><strong>{result?.source_count??'—'}</strong></div><div><span>Feed coverage</span><strong>{result?.coverage?.feed_successes!=null?result.coverage.feed_successes+'/'+result.coverage.requests:'—'}</strong></div><div><span>Model</span><strong>{probabilityAllowed?'Validated':'Research only'}</strong></div><div><span>Last analyzed</span><strong>{result?.generated_at?new Date(result.generated_at).toLocaleString():'—'}</strong></div></div>
-   <div className="events-ranked-list">
+   <div className="events-ranking-stats"><div><span>Eligible stories</span><strong>{result?.source_count??'—'}</strong></div><div><span>Feed coverage</span><strong>{result?.coverage?.feed_successes!=null?result.coverage.feed_successes+'/'+result.coverage.requests:'—'}</strong></div><div><span>Model</span><strong>{probabilityAllowed?'Validated':ready?'Experimental · uncalibrated':'Unavailable'}</strong></div><div><span>Last analyzed</span><strong>{result?.generated_at?new Date(result.generated_at).toLocaleString():'—'}</strong></div></div>
+   {noEligible&&<div className="events-empty-diagnostic" role="status"><strong>No eligible economic evidence for this query</strong><p>Source queries succeeded, but no retrieved article passed topic, recency and duplication checks. No scenario ranking or probability is issued.</p><p>Retrieved: {result.filter_diagnostics?.retrieved??'—'} · Unrelated: {result.filter_diagnostics?.off_topic??'—'} · Old: {result.filter_diagnostics?.stale??'—'} · Duplicate: {result.filter_diagnostics?.duplicate??'—'}</p><p>Available feed requests: {result.coverage?.feed_successes??0}/{result.coverage?.requests??'—'}. Feed availability is not valid evidence.</p></div>}
+   {!noEligible&&<div className="events-ranked-list">
     {(ranked.length?ranked:Array.from({length:10},(_,i)=>({id:'pending-'+i,rank:i+1,title:'Awaiting research',status:'PENDING_EVIDENCE',sources:[],support_index:null}))).map(sc=>{
       const old=oldRanked.find(x=>x.id===sc.id);
       const p=probabilityAllowed?result.bayesian_forecast.posterior?.[sc.id]:sc.experimental_probability?.probability_estimate;
@@ -131,7 +133,7 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
        </div>
       </article>;
     })}
-   </div>
+   </div>}
    <p className="events-ranked-note">* Experimental estimates use an assumed 50% prior, limited headline evidence and a fixed log-odds update; they are NOT calibrated probabilities. Tap Evidence for sources. Paths can overlap and do not have to total 100%.</p>
    {loading&&<div className="events-loading-overlay" role="status" aria-live="polite"><div className="events-loading-spinner" aria-hidden="true"/><strong>Analyzing new evidence</strong><span>Retrieving sources and comparing scenario pathways…</span></div>}
   </section>
