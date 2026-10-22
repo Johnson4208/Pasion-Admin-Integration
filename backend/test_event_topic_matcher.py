@@ -13,6 +13,9 @@ class TopicMatcherTests(unittest.TestCase):
   self.assertFalse(m.inspect("Flowers show growth in research","Research institutions developing partnerships","GDP growth","GDP growth economic output recession")["eligible"])
  def test_macro_headline(self):
   self.assertTrue(m.inspect("Vietnam economic growth forecast raised","GDP output expansion","GDP growth","GDP growth economic output recession")["eligible"])
+ def test_trade_disruption_vietnam(self):
+  self.assertTrue(m.inspect('Ùn tắc cảng biển gây gián đoạn vận tải tại Việt Nam','Hoạt động logistics bị trì hoãn','Trade disruption','shipping trade route supply disruption')['eligible'])
+  self.assertFalse(m.inspect('Vietnam expands maritime transport investments','Supply chain development program','Trade disruption','shipping trade route supply disruption')['eligible'])
  def test_diagnostics_in_no_evidence_case(self):
   now=datetime(2026,10,21,12,tzinfo=timezone.utc)
   rows=[{"title":"Research collaboration improves flowers","description":"Academic research","source":"Example","published_at":(now-timedelta(days=1)).isoformat(),"url":"https://news.google.com/a"},
