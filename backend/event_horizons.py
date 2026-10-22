@@ -7,11 +7,11 @@ HORIZONS={
  "1 day":(1,"SHORT_TERM",7),
  "3 days":(3,"SHORT_TERM",7),
  "7 days":(7,"SHORT_TERM",7),
- "30 days":(30,"SHORT_TERM",14),
- "90 days":(90,"SHORT_TERM",30),
- "180 days":(180,"LONG_TERM",30),
- "365 days":(365,"LONG_TERM",30),
- "730 days":(730,"LONG_TERM",30)
+ "30 days":(30,"SHORT_TERM",30),
+ "90 days":(90,"SHORT_TERM",45),
+ "180 days":(180,"LONG_TERM",60),
+ "365 days":(365,"LONG_TERM",90),
+ "730 days":(730,"LONG_TERM",90)
 }
 LABELS={
  "1 day":"1 day","3 days":"3 days","7 days":"1 week",
