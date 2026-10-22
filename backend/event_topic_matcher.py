@@ -22,7 +22,7 @@ ANCHORS={
  "Bank lending":("bank lending","bank loan","cho vay ngan hang","du no tin dung"),
  "Conflict risk":("armed conflict","military conflict","war","ceasefire","escalation","xung dot","chien tranh","ngung ban"),
  "Sanctions":("sanctions","embargo","export restrictions","lenh trung phat","cam van"),
- "Trade disruption":("trade route","shipping disruption","supply chain","trade disruption","chuoi cung ung","van tai bien"),
+ "Trade disruption":("trade disruption","shipping disruption","supply chain disruption","port congestion","freight bottleneck","shipping delays","logistics disruption","gian doan chuoi cung ung","dut gay chuoi cung ung","un tac cang","dut gay thuong mai","gian doan van tai","cham giao hang","xuat nhap khau dinh tre"),
  "M&A activity":("mergers","acquisition","merger","mua ban sap nhap","m a deal"),
  "Earnings outlook":("earnings outlook","earnings guidance","profit forecast","du bao loi nhuan","trien vong loi nhuan"),
  "Hiring plans":("hiring","recruitment","headcount","tuyen dung","ke hoach nhan su"),
