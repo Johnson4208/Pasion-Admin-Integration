@@ -146,7 +146,7 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
   items.append({**row,'topic_match_reason':match['reason'],'topic_matched_terms':match['matched'],'id':group,'cluster_id':group,'age_days':round(age,1),'relevance':round(query_relevance,3),
     'direction':round(direction,3),'weight':round(weight,5),'provenance_multiplier':provenance_multiplier,'source_tier':row.get('source_tier','RSS_AGGREGATED_UNVERIFIED')})
  # An independent source count is NOT measured from one aggregator.
- if len(items)<2:
+ if len(items)<1:
   return {'version':1,'status':'UNAVAILABLE','reason_code':'INSUFFICIENT_RECENT_DISTINCT_STORIES',
    'items':items,'outcomes':[],'filter_diagnostics':diagnostics,'horizon_info':horizon_info,'dynamic_scenarios':event_scenario_board.candidates(items,factor,focus,horizon),'source_count':len(items),'independent_source_count':None,'coverage':coverage,'bayesian_forecast':event_bayesian.unavailable(),
    'calibrated_probability':False,'probability_status':'UNAVAILABLE_NO_CALIBRATED_EVENT_MODEL'}
@@ -162,6 +162,7 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
   'independent_source_count':None,'coverage':coverage,'generated_at':now.isoformat(),
   'bayesian_forecast':event_bayesian.unavailable(),
   'dynamic_scenarios':event_scenario_board.candidates(items,factor,focus,horizon),
+  'evidence_sufficiency':'SINGLE_SOURCE_LOW' if len(items)==1 else 'MULTI_STORY_UNVERIFIED',
   'model':{'name':'solvai58-inspired-rss-evidence-share-v2','components':['recent RSS','query relevance','directional lexicon','deduplicated headlines','explicit primary-source provenance uplift (heuristic)'],
    'calibrated_probability':False,'label':'Evidence-weighted share','warning':'Not a probability. News publication and sentiment are not proof of event outcomes.'},
   'probability_status':'UNAVAILABLE_NO_CALIBRATED_EVENT_MODEL'}
