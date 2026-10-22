@@ -130,10 +130,10 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
   group=hashlib.sha256((' '.join(tokens)).encode()).hexdigest()[:16]
   if group in seen:
    diagnostics['duplicate']+=1;continue
-  seen.add(group)
   match=event_topic_matcher.inspect(row.get('title'),row.get('description'),factor,terms)
   if not match['eligible']:
    diagnostics['off_topic']+=1;continue
+  seen.add(group)
   query_relevance=match['relevance']
   text=(row['title']+' '+row['description']).casefold()
   positive=sum(1 for w in _POS if w in text);negative=sum(1 for w in _NEG if w in text)
