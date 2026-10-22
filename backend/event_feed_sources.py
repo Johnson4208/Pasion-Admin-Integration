@@ -122,6 +122,13 @@ def _gdelt(query):
  return result
 
 def _variants(topic_terms,focus,location):
+ if 'shipping trade route supply disruption' in topic_terms and location[0]=='Vietnam':
+  return [
+   ('("trade disruption" OR "port congestion" OR "shipping delays") Vietnam',('en-US','US','US:en')),
+   ('("supply chain disruption" OR "freight bottleneck") Vietnam',('en-GB','GB','GB:en')),
+   ('("gián đoạn chuỗi cung ứng" OR "ùn tắc cảng" OR "đứt gãy thương mại") Việt Nam',('vi-VN','VN','VN:vi')),
+   ('("vận tải biển" OR "xuất nhập khẩu") (gián đoạn OR ùn tắc OR trì hoãn) Việt Nam',('vi-VN','VN','VN:vi'))]
+
  # Do not require every word of a long keyword sequence to appear in one article.
  all_terms=[w for w in re.findall(r"[A-Za-z][A-Za-z-]*",topic_terms) if len(w)>2]
  a=all_terms[:3]
@@ -162,7 +169,7 @@ def _fed_official():
 def retrieve(topic_terms,focus):
  region=geography(focus)
  jobs=[('Google News RSS',query,edition) for query,edition in _variants(topic_terms,focus,region)]
- gdeltquery=(' '.join(re.findall(r"[A-Za-z]+",topic_terms)[:2])+' '+region[1]).strip()
+ gdeltquery=('"shipping disruption" Vietnam' if 'shipping trade route supply disruption' in topic_terms and region[0]=='Vietnam' else ' '.join(re.findall(r"[A-Za-z]+",topic_terms)[:2])+' '+region[1]).strip()
  jobs.append(('GDELT DOC 2.0',gdeltquery,None))
  if any(word in topic_terms.lower() for word in ('central bank','interest rates','inflation','credit conditions','mortgage rates','monetary policy')):
   jobs.append(('Federal Reserve official RSS','',None))
