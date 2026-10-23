@@ -1,53 +1,51 @@
-CẬP NHẬT PASION TRÊN WINDOWS — 23/10/2026
+PASION — MỘT BỘ MÃ NGUỒN HOÀN CHỈNH — 23/10/2026
 
-Bản này gồm Event Scenarios mới, so sánh toàn nhóm xác suất, dữ liệu đối chiếu,
-và Vite 6.4.5. Không kèm xác suất thực đã kiểm định hoặc mô hình lịch sử thực.
-Các JSON trong tests/fixtures chỉ là dữ liệu kiểm thử tổng hợp.
+Bản này giữ Event Scenarios mới, so sánh toàn nhóm kết quả, nền tảng dữ liệu
+đối chiếu, Vite 6.4.5 và công cụ khôi phục dữ liệu backend trên máy bạn.
+ZIP nguồn không chứa tài khoản, tài liệu riêng, khóa API hoặc môi trường cài sẵn.
+Chưa có mô hình xác suất thực đã được kiểm định; không tự sinh phần trăm giả.
 
-GIỮ TÀI KHOẢN VÀ DỮ LIỆU HIỆN TẠI
-1. Dừng ứng dụng bằng Ctrl+C.
-2. Sao lưu nguyên thư mục dự án đang dùng trước khi cập nhật.
-3. Giải nén ZIP này vào một thư mục tạm.
-4. Mở thư mục Pasion-Admin-Integration-scenarios có chứa package.json.
-   Chép nội dung thư mục này vào thư mục dự án bạn đang chạy, ví dụ
-   C:\Pasion-Admin-Integration-main. Cho phép thay thế các tệp mã nguồn trùng tên.
-   Giữ nguyên thư mục cũ; không xóa thư mục backend rồi thay cả thư mục.
-   ZIP không chứa các DB, .env, mail-config.json, .venv hoặc node_modules.
-   Chép các tệp mã nguồn không tự di chuyển dữ liệu từ một thư mục dự án khác.
-5. Trong terminal tại thư mục dự án đang dùng, chạy từng lệnh:
+ĐỐI CHIẾU BA PHIÊN BẢN TRONG ZIP LỚN
+ZIP lớn bạn đã gửi chưa đọc được do giới hạn chuyển tệp 32 MiB.
+1. Giải nén bộ mã này. Mở thư mục có package.json và PREPARE-RECOVERY.cmd.
+2. Mở PREPARE-RECOVERY.cmd, chọn ZIP gốc chứa ba phiên bản.
+3. Gửi ZIP mới có tên kết thúc -recovery-source-NGAY-GIO.zip để đối chiếu mã.
+   ZIP mới chỉ để đối chiếu. Giữ ZIP gốc chứa đầy đủ dữ liệu trên máy bạn.
+Chi tiết: RECOVERY-BUNDLE.md. Công cụ không sửa ZIP gốc và không tự gộp ba bản.
 
-npm.cmd ci
-npm.cmd run dev:full
+KHÔI PHỤC DỮ LIỆU CŨ VÀO MỘT THƯ MỤC DÙNG MÃ MỚI
+1. Dừng cả hai bản PASION và Event Agent bằng Ctrl+C ở các Terminal.
+2. Trong thư mục mã mới, mở RECOVER-BACKEND.cmd.
+3. Chọn đúng một thư mục dự án cũ có package.json, backend và src.
+   Nếu các bản ở trong ZIP, giải nén trước để chọn được thư mục.
+4. Công cụ tạo Pasion-recovered-NGAY-GIO cạnh thư mục mã mới.
+   Chỉ dùng thư mục đó sau khi thông báo thành công. Giữ bản cũ để đối chiếu.
+Chi tiết và lệnh thay thế: BACKEND-RECOVERY.md.
 
-Nếu máy đã tạo .venv và cài thư viện thành công, không cần tạo lại Python.
-Tài khoản cũ thuộc backend/accounts.sqlite3 trong thư mục bạn từng dùng.
-Sau khi khởi động lại, phiên đăng nhập hiện tại có thể mất nhưng mật khẩu
-trong cùng DB không tự đổi. Không xóa DB để sửa lỗi mật khẩu.
+Dữ liệu lấy trọn bộ từ một phiên bản, không tự trộn tài khoản của nhiều bản.
+Mật khẩu và quyền cũ được giữ. Sau khi khởi động lại cần đăng nhập lại.
+Cấu hình SMTP, biến môi trường và JSON mô hình riêng không tự chuyển.
+Thư mục đã khôi phục có dữ liệu riêng tư: KHÔNG gửi lên GitHub hoặc gửi lại.
+Nếu có RECOVERY-INCOMPLETE.txt, không chạy thư mục đó; tạo đầu ra mới và thử lại.
 
-CÀI MỚI NẾU CHƯA CÓ MÔI TRƯỜNG PYTHON
+CÀI VÀ CHẠY
 Cần Node.js LTS 22/24 và Python 3.12.
-Nếu py trỏ tới Python không tồn tại:
-winget install --exact --id Python.Python.3.12
-Sau đó đóng/mở lại terminal, kiểm tra: py -3.12 --version
-Trong thư mục có package.json, chạy từng lệnh và dừng nếu có lỗi:
+Trong thư mục bản chính có package.json, mở CMD, chạy từng dòng và dừng nếu lỗi:
 
 npm.cmd ci
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip --timeout 120 --retries 10 --disable-pip-version-check
-.\.venv\Scripts\python.exe -m pip install -r backend/requirements-documents.txt --timeout 120 --retries 10 --disable-pip-version-check
+.\.venv\Scripts\python.exe -m pip install --timeout 120 --retries 10 --disable-pip-version-check -r backend/requirements-documents.txt
 npm.cmd run dev:full
 
-Không cần Administrator hoặc Activate.ps1.
-Giữ terminal mở. Trình duyệt: http://127.0.0.1:5173
-Demo mặc định (nếu chưa đổi): demo@solvai.com / SolvAI2024!
-Chỉ chạy một backend tại một thời điểm.
+Nếu py không tìm thấy Python, cài rồi mở lại CMD:
+winget install --exact --id Python.Python.3.12
+Kiểm tra: py -3.12 --version
 
-XÁC SUẤT VÀ DỮ LIỆU ĐỐI CHIẾU
-- Mặc định: trạng thái cuối kỳ, các kết quả trong cùng nhóm cộng thành 100%.
-- Mọi kết quả được hiển thị cùng nhau khi có đủ mô hình và dữ liệu hợp lệ.
-- Nếu thiếu mô hình hoặc có một xác suất không hợp lệ, không hiển thị phân phối
-  thiếu kết quả và không gán bừa 50% hay xác suất bằng nhau.
-- Bộ thu thập dữ liệu ban đầu có World Bank, FRED và UCDP. Cần truy cập mạng.
-- Xem EVENT_OUTCOME_SOURCES.md và EVENT_PROBABILITIES.md trước khi xây mô hình.
-- Thu thập quan sát không tự chứng minh dữ liệu phù hợp để dự báo.
-- Các API mới hiện chưa được kiểm tra thành công trên cloud vì proxy HTTP 403.
+Không cần Administrator hoặc Activate.ps1. Giữ Terminal mở.
+Trình duyệt: http://127.0.0.1:5173
+Lần sau chỉ cần npm.cmd run dev:full tại cùng thư mục.
+Chỉ chạy một backend trên cổng 8000 tại một thời điểm.
+
+Demo mặc định (nếu tài khoản này chưa đổi): demo@solvai.com / SolvAI2024!
+Tài khoản riêng phụ thuộc backend/accounts.sqlite3 đã khôi phục.
+Không xóa database để sửa lỗi đăng nhập.

@@ -19,6 +19,8 @@ Vite is patched to at least 6.4.5; `package-lock.json` records the tested depend
 You can also run npm run dev and .\.venv\Scripts\python.exe -X utf8 backend/server.py in separate terminals. Keep only one backend running on port 8000; a second instance now reports that the port is already occupied. Restart the backend after changing Python code.
 Open http://127.0.0.1:5173.
 
+Upgrading from an older local project? Keep the latest source and recover a coherent database set into a **new complete folder** with `RECOVER-BACKEND.cmd`; see [BACKEND-RECOVERY.md](BACKEND-RECOVERY.md). For reviewing several source versions in a large ZIP, `PREPARE-RECOVERY.cmd` creates a smaller source-only archive; see [RECOVERY-BUNDLE.md](RECOVERY-BUNDLE.md). Private databases and credentials stay on your machine.
+
 Signed-out visitors see the Slate & Ice public homepage. Client Login opens /#login and Get Started opens /#register. Signed-in visitors continue directly to their research workspace. The supplied PASION image and local architectural photographs are preserved. Inter and Libre Baskerville fonts are bundled locally, with licenses in public/fonts. Public portfolio figures and insights are explicitly illustrative; the allocation preview totals 100%. The same palette extends through login, account settings, and the workspace.
 
 Demo login: demo@solvai.com / SolvAI2024!
