@@ -40,8 +40,8 @@ ZIP mới phục vụ **đối chiếu mã nguồn**, không phải bản sao l�
 ## Khi có thông báo lỗi
 
 - **Vượt 31 MiB:** đầu ra dở dang được xóa; ZIP gốc giữ nguyên. Chuẩn bị ZIP riêng cho từng thư mục phiên bản rồi chạy công cụ cho từng ZIP. Không xóa các bản gốc để giảm kích thước.
-- **ZIP chỉ chứa các ZIP con:** giải nén các ZIP con vào các thư mục riêng, giữ tên phân biệt của cả ba bản, rồi nén chung những thư mục đó. Công cụ không tự mở nhiều tầng ZIP.
-- **Đường dẫn trùng nhau/không an toàn, liên kết hoặc file lỗi:** tạo lại ZIP từ các thư mục nguồn. Công cụ không ghi đè hay cố giải nén những đường dẫn đó.
+- **Phát hiện tệp nén con:** công cụ dừng trước khi tạo đầu ra nếu có ZIP, 7z, RAR, TAR hoặc các biến thể TAR nén nằm ngoài thư mục thư viện/cache, file sinh tự động và thư mục dữ liệu riêng đã loại bỏ. Điều này cũng áp dụng khi ZIP ngoài có README hoặc một phiên bản đã giải nén, vì các phiên bản còn nằm trong file nén con sẽ bị thiếu. Thông báo liệt kê tối đa 5 đường dẫn và số file còn lại. Giải nén từng file nén con vào một thư mục riêng, giữ tên phân biệt của cả ba bản, rồi nén chung những thư mục đó và chạy lại. Công cụ không tự mở nhiều tầng file nén; ZIP gốc giữ nguyên.
+- **Đường dẫn trùng nhau/không an toàn, liên kết hoặc file lỗi:** tạo lại ZIP từ các thư mục nguồn. Tên chứa ký tự Windows không cho phép như `<`, `>`, `:`, `"`, `|`, `?`, `*` cũng bị từ chối trước khi tạo đầu ra. Công cụ không ghi đè hay cố giải nén những đường dẫn đó.
 - **Không có cửa sổ chọn file:** dùng lệnh có `--input` ở trên. Python thiếu Tkinter vẫn dùng được cách gõ lệnh.
 - **Không tìm thấy thư mục đầu ra:** tạo thư mục đó trước hoặc bỏ `--output` để tạo ZIP cạnh bản gốc.
 

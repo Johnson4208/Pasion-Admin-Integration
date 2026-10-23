@@ -75,7 +75,7 @@ SOURCE_SUFFIXES = {".py", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".json",
                    ".woff", ".woff2", ".cmd", ".bat", ".ps1", ".sh"}
 SOURCE_SUFFIXES.update({".toml", ".ini", ".cfg", ".sql", ".lock"})
 PRIVATE_NAMES = {"mail-config.json", "recovery-manifest.json", "delivery.json",
-                 "credentials.json", "secrets.json", "config.local.json", "RECOVERY-INCOMPLETE.txt"}
+                 "credentials.json", "secrets.json", "config.local.json", "recovery-incomplete.txt"}
 WARNINGS = [
     "State comes from one selected version; records from other versions were not merged.",
     "Both applications and the independent event agent must remain stopped during recovery.",
@@ -103,6 +103,8 @@ def _project(value: Path | str) -> Path:
         valid_type = path.is_dir() if name == "src" else path.is_file()
         if not valid_type or not path.is_relative_to(root):
             raise RecoveryError("Select a project folder containing package.json, backend/server.py and src.")
+    if any(path.name.casefold() == "recovery-incomplete.txt" for path in root.iterdir()):
+        raise RecoveryError("The selected project has an incomplete recovery marker. Select an intact original project.")
     return root
 
 
@@ -133,20 +135,27 @@ def _state_files(root: Path) -> dict[str, Path]:
     return paths
 
 
+def _file_fingerprint(path: Path) -> tuple:
+    before = path.stat()
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    after = path.stat()
+    attributes = lambda value: (value.st_size, value.st_mtime_ns, value.st_ino)
+    if attributes(before) != attributes(after):
+        raise RecoveryError("Source files changed. Stop editing and close both applications and the event agent, then retry.")
+    return (*attributes(after), digest.hexdigest())
+
+
 def _fingerprint(root: Path) -> dict:
-    result = {}
-    for name, path in _state_files(root).items():
-        before = path.stat()
-        digest = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-        after = path.stat()
-        attributes = lambda value: (value.st_size, value.st_mtime_ns, value.st_ino)
-        if attributes(before) != attributes(after):
-            raise RecoveryError("Source data changed. Stop both applications and the event agent, then retry.")
-        result[name] = (*attributes(after), digest.hexdigest())
-    return result
+    return {name: _file_fingerprint(path) for name, path in _state_files(root).items()}
+
+
+def _verify_copy(path: Path, expected: tuple) -> None:
+    actual = _file_fingerprint(path)
+    if (actual[0], actual[-1]) != (expected[0], expected[-1]):
+        raise RecoveryError("A source file changed while it was copied. No output project was installed.")
 
 
 def _quoted(name: str) -> str:
@@ -213,6 +222,8 @@ def _snapshot(root: Path, destination: Path) -> list[dict]:
             shutil.copyfile(root / name, path)
         if _fingerprint(root) != before:
             raise RecoveryError("Source data changed during copying. Stop the application and retry.")
+        for name, fingerprint in before.items():
+            _verify_copy(clone / name, fingerprint)
         for relative in STORES:
             path = clone / relative
             if not path.exists():
@@ -289,22 +300,41 @@ def inspect_project(root: Path) -> dict:
 def _source_files(root: Path):
     for folder, dirs, names in os.walk(root, followlinks=False):
         parent = Path(folder)
-        dirs[:] = [name for name in sorted(dirs) if name not in SKIP_DIRS and
-                   (parent != root or name in SOURCE_DIRS)]
+        dirs[:] = [name for name in sorted(dirs) if name.casefold() not in SKIP_DIRS and
+                   (parent != root or name.casefold() in SOURCE_DIRS)]
         for name in dirs:
             _safe_path(parent / name)
         for name in sorted(names):
             path = parent / name
+            folded = name.casefold()
             templates = {".env.example", ".env.sample", ".env.template"}
             dot_source = templates | {".gitignore", ".gitattributes", ".editorconfig"}
-            if name in PRIVATE_NAMES or (name.startswith(".env") and name not in templates) or (name.startswith(".") and name not in dot_source):
+            if folded in PRIVATE_NAMES or (folded.startswith(".env") and folded not in templates) or (folded.startswith(".") and folded not in dot_source):
                 continue
-            if path.suffix.lower() not in SOURCE_SUFFIXES and name not in dot_source:
+            if path.suffix.lower() not in SOURCE_SUFFIXES and folded not in dot_source:
                 continue
             _safe_path(path)
             if not stat.S_ISREG(path.stat().st_mode):
                 raise RecoveryError("Latest source contains a non-regular source file.")
             yield path
+
+
+def _source_fingerprint(root: Path) -> dict:
+    result, size = {}, 0
+    for path in _source_files(root):
+        size += path.stat().st_size
+        if size > MAX_SOURCE_BYTES:
+            raise RecoveryError("Source exceeds 512 MiB; remove generated files from a copy and retry.")
+        result[path.relative_to(root).as_posix()] = _file_fingerprint(path)
+    return result
+
+
+def _mark_incomplete(output: Path) -> None:
+    marker = _safe_path(output / "RECOVERY-INCOMPLETE.txt")
+    with marker.open("w", encoding="utf-8") as stream:
+        stream.write("Recovery was interrupted. Do not run this folder; select a new output and retry.\n")
+        stream.flush()
+        os.fsync(stream.fileno())
 
 
 @_safe_errors
@@ -320,17 +350,25 @@ def assemble(latest: Path, state_source: Path, output: Path, *, stopped=False) -
     for source in (latest, state_source):
         if output.is_relative_to(source) or source.is_relative_to(output):
             raise RecoveryError("Output must be a separate sibling folder, outside both project folders.")
+    source_before = _source_fingerprint(latest)
+    state_before = _fingerprint(state_source)
+
+    def verify_inputs():
+        _project(latest)
+        _project(state_source)
+        if _source_fingerprint(latest) != source_before or _fingerprint(state_source) != state_before:
+            raise RecoveryError("Source files changed during recovery. No output project was installed; stop both applications and retry.")
+
     with tempfile.TemporaryDirectory(prefix=".pasion-recovery-", dir=output.parent) as directory:
         staged = Path(directory) / "project"
         staged.mkdir(mode=0o700)
-        size, count = 0, 0
-        for source in _source_files(latest):
-            size += source.stat().st_size
-            if size > MAX_SOURCE_BYTES:
-                raise RecoveryError("Source exceeds 512 MiB; remove generated files from a copy and retry.")
-            target = staged / source.relative_to(latest)
+        count = 0
+        for name, fingerprint in source_before.items():
+            source = _safe_path(latest / name)
+            target = staged / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
+            _verify_copy(target, fingerprint)
             count += 1
         stores = _snapshot(state_source, staged)
         if not any(store["present"] for store in stores):
@@ -354,16 +392,28 @@ def assemble(latest: Path, state_source: Path, output: Path, *, stopped=False) -
             json.dump(report, stream, ensure_ascii=False, indent=2)
             stream.flush()
             os.fsync(stream.fileno())
+        verify_inputs()
         # mkdir reserves a fresh destination. We never rename onto a preexisting folder.
         output.mkdir(mode=0o700)
         try:
-            (output / "RECOVERY-INCOMPLETE.txt").write_text(
-                "Recovery was interrupted. Do not run this folder; select a new output and retry.\n", encoding="utf-8")
+            _mark_incomplete(output)
             for path in staged.iterdir():
                 shutil.move(str(path), str(output / path.name))
+            verify_inputs()
             (output / "RECOVERY-INCOMPLETE.txt").unlink()
         except BaseException:
-            shutil.rmtree(output)
+            try:
+                shutil.rmtree(output)
+            except OSError:
+                try:
+                    _safe_path(output).mkdir(exist_ok=True)
+                    _mark_incomplete(output)
+                except (OSError, RecoveryError):
+                    raise RecoveryError("Recovery and cleanup failed, and the partial output could not be marked. "
+                                        "Do not run this folder; remove it manually: " + str(output)) from None
+                raise RecoveryError("Recovery failed and the partial output could not be removed. "
+                                    "It remains marked RECOVERY-INCOMPLETE.txt; do not run it. "
+                                    "Choose a new output folder. Original projects were not changed.") from None
             raise
     return report
 

@@ -7,16 +7,16 @@ Install Node.js LTS (22 or 24) and Python (3.12 recommended), then open a termin
 npm.cmd ci
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r backend/requirements-documents.txt
-npm.cmd run dev:full
+npm.cmd run dev
 ```
 
-This starts the frontend and backend together with the project Python environment. No PowerShell activation or Administrator terminal is required. On later runs, use only `npm.cmd run dev:full` in the same folder.
+This starts the frontend and backend together with the project Python environment. No PowerShell activation or Administrator terminal is required. On later runs, open **RUN-PASION.cmd** on Windows, or run `npm.cmd run dev` in the same folder. `npm run dev:full` remains an alias. Both use the fixed frontend address below, and check for an incomplete recovery, missing packages and an unusable Python environment before starting either server.
 
 If `py` reports `Unable to create process` or `The system cannot find the file specified`, its registered Python executable is missing. Install Python 3.12 with `winget install --exact --id Python.Python.3.12` (or the official python.org Windows installer), reopen the terminal, and verify `py -3.12 --version` before creating `.venv`. If an existing Python 3.12 installation is damaged, repair it using its Windows installer. A `.venv` created on another computer is not portable; create it locally.
 
 Vite is patched to at least 6.4.5; `package-lock.json` records the tested dependency versions. For npm versions that require install-script approval, `allowScripts` approves only the reviewed `esbuild@0.25.12` and `@parcel/watcher@2.6.0` versions. Other packages and future versions require separate review. Funding messages are optional donation notices and do not block the app. Use `npm audit` to check current advisories; avoid forced upgrades without compatibility checks.
 
-You can also run npm run dev and .\.venv\Scripts\python.exe -X utf8 backend/server.py in separate terminals. Keep only one backend running on port 8000; a second instance now reports that the port is already occupied. Restart the backend after changing Python code.
+For separate terminals, use `npm run dev:frontend` and `.\.venv\Scripts\python.exe -X utf8 backend/server.py`. Keep only one backend running on port 8000; a second instance reports that the port is already occupied. Restart the backend after changing Python code. The frontend also refuses an occupied port rather than switching to a different browser storage origin.
 Open http://127.0.0.1:5173.
 
 Upgrading from an older local project? Keep the latest source and recover a coherent database set into a **new complete folder** with `RECOVER-BACKEND.cmd`; see [BACKEND-RECOVERY.md](BACKEND-RECOVERY.md). For reviewing several source versions in a large ZIP, `PREPARE-RECOVERY.cmd` creates a smaller source-only archive; see [RECOVERY-BUNDLE.md](RECOVERY-BUNDLE.md). Private databases and credentials stay on your machine.
@@ -66,7 +66,7 @@ The sidebar uses semantic outline icons for each tool. A branded screen remains 
 
 Administrators can open Administration → Document workspace to upload PDFs, Word DOCX files, or PNG/JPEG/WebP images. Uploads save their original bytes and metadata immediately in backend/documents.sqlite3, then extract text and tables in the background. A saved document appears in the library while processing, and another upload can start immediately. The library supports filename search, PDF/Word/image filters, upload dates, newest/oldest ordering, and grouping by type, day, or month. Dates use Asia/Baku. Administrators can download saved originals, retry failed extraction, and search or ask questions with source references after extraction finishes.
 
-Every document endpoint checks the current administrator role, including downloads and retries. Members and signed-out visitors cannot access the library. The frontend development server blocks direct access to the backend directory and its database files. Original files, extracted text, tables, and processing status survive backend restarts; interrupted jobs resume automatically. Deleting a document removes its saved original and extracted content. Existing documents from the earlier database remain readable; upload an older document again to save a downloadable original.
+Every document endpoint checks the current administrator role, including downloads and retries. Members and signed-out visitors cannot access the library. Development and preview servers block private backend folders, Event Agent state, local database files and their sidecars, environment files and recovery manifests, including files mistakenly placed under `public`. This local serving protection does not sanitize build artifacts: keep private files out of `public` before building or sharing `dist`. Original files, extracted text, tables, and processing status survive backend restarts; interrupted jobs resume automatically. Deleting a document removes its saved original and extracted content. Existing documents from the earlier database remain readable; upload an older document again to save a downloadable original.
 
 Install document support in a project environment, then start the API with that environment:
 

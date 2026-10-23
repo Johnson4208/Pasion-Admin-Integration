@@ -35,7 +35,7 @@ Trong thư mục bản chính có package.json, mở CMD, chạy từng dòng v�
 npm.cmd ci
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --timeout 120 --retries 10 --disable-pip-version-check -r backend/requirements-documents.txt
-npm.cmd run dev:full
+npm.cmd run dev
 
 Nếu py không tìm thấy Python, cài rồi mở lại CMD:
 winget install --exact --id Python.Python.3.12
@@ -43,7 +43,9 @@ Kiểm tra: py -3.12 --version
 
 Không cần Administrator hoặc Activate.ps1. Giữ Terminal mở.
 Trình duyệt: http://127.0.0.1:5173
-Lần sau chỉ cần npm.cmd run dev:full tại cùng thư mục.
+Lần sau mở RUN-PASION.cmd hoặc chạy npm.cmd run dev tại cùng thư mục.
+Lệnh dev:full cũ vẫn hoạt động. npm run dev giờ mở cả backend và giao diện.
+Nếu chạy hai Terminal riêng: giao diện dùng npm.cmd run dev:frontend.
 Chỉ chạy một backend trên cổng 8000 tại một thời điểm.
 
 Demo mặc định (nếu tài khoản này chưa đổi): demo@solvai.com / SolvAI2024!

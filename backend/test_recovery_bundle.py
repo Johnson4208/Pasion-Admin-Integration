@@ -2,6 +2,7 @@
 
 import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import stat
@@ -119,7 +120,7 @@ class RecoveryBundleTests(unittest.TestCase):
         excluded = ["a/.venv/Lib/site.py", "b/node_modules/lib/index.js", "b/.git/config",
                     "c/dist/index.html", "c/__pycache__/thing.pyc", "c/.cache/data.json",
                     "c/artifacts/report.json", "c/test-results/test.json", "c/logo.png",
-                    "c/setup.exe", "c/another-version.zip"]
+                    "c/setup.exe", "c/node_modules/library/archive.zip"]
         self.write_zip([("a/src/index.js", b"export {};\n")] + [(name, b"not source") for name in excluded])
         original_open = zipfile.ZipFile.open
         def guarded_open(archive, member, *args, **kwargs):
@@ -142,6 +143,16 @@ class RecoveryBundleTests(unittest.TestCase):
                 self.write_zip([(name, b"source")])
                 original = self.input.read_bytes()
                 with self.assertRaises(bundle.BundleError):
+                    self.run_bundle()
+                self.assertEqual(self.input.read_bytes(), original)
+                self.assertFalse(self.output.exists())
+
+    def test_forbidden_windows_characters_are_rejected_without_changing_input(self):
+        for char in '<>"|?*':
+            with self.subTest(char=char):
+                self.write_zip([(f"version/src/file{char}.py", b"# original")])
+                original = self.input.read_bytes()
+                with self.assertRaisesRegex(bundle.BundleError, "Windows"):
                     self.run_bundle()
                 self.assertEqual(self.input.read_bytes(), original)
                 self.assertFalse(self.output.exists())
@@ -257,7 +268,7 @@ class RecoveryBundleTests(unittest.TestCase):
 
     def test_empty_nested_only_bad_and_manifest_inputs_are_actionable(self):
         self.write_zip([("one.zip", b"not an expanded version")])
-        with self.assertRaisesRegex(bundle.BundleError, "ZIP con"):
+        with self.assertRaisesRegex(bundle.BundleError, "tệp nén con"):
             self.run_bundle()
         self.assertFalse(self.output.exists())
         self.input.write_bytes(b"not a zip")
@@ -266,6 +277,102 @@ class RecoveryBundleTests(unittest.TestCase):
         self.write_zip([(bundle.MANIFEST_NAME, b"{}"), ("source.py", b"# app")])
         with self.assertRaisesRegex(bundle.BundleError, "ZIP gốc"):
             self.run_bundle()
+
+    def test_nested_versions_fail_before_output_even_with_readme_or_flat_source(self):
+        nested_bytes = io.BytesIO()
+        with zipfile.ZipFile(nested_bytes, "w") as archive:
+            archive.writestr("package.json", '{"name":"pasion"}')
+            archive.writestr("backend/server.py", "# version backend")
+            archive.writestr("src/App.jsx", "export default function App() {}")
+        cases = [
+            [("README.md", b"# All three versions")] +
+            [(f"version-{number}.zip", nested_bytes.getvalue()) for number in range(1, 4)],
+            [("flat/package.json", b"{}"), ("flat/backend/server.py", b"# flat version")] +
+            [(f"version-{number}.zip", nested_bytes.getvalue()) for number in range(2, 4)],
+        ]
+        from unittest.mock import patch
+        for entries in cases:
+            with self.subTest(paths=[name for name, _ in entries]):
+                self.write_zip(entries)
+                original = self.input.read_bytes()
+                # The central directory is enough to reject this input. Even a
+                # harmless README must not be copied before discovering omissions.
+                with patch.object(zipfile.ZipFile, "open", side_effect=AssertionError("must fail before reading members")):
+                    with self.assertRaises(bundle.BundleError) as caught:
+                        self.run_bundle()
+                message = str(caught.exception)
+                self.assertIn("Không tạo ZIP đầu ra", message)
+                for name, _ in entries:
+                    if name.endswith(".zip"):
+                        self.assertIn(name, message)
+                self.assertEqual(self.input.read_bytes(), original)
+                self.assertFalse(self.output.exists())
+
+    def test_common_nested_archive_formats_are_rejected(self):
+        suffixes = [".ZIP", ".zipx", ".7Z", ".rar", ".tar", ".tar.gz", ".tgz", ".tar.bz2",
+                    ".tbz", ".tbz2", ".tar.xz", ".txz", ".tar.lz", ".tar.lzma", ".tlz",
+                    ".tar.zst", ".tzst", ".tar.Z", ".taz", ".tar.lz4"]
+        for suffix in suffixes:
+            with self.subTest(suffix=suffix):
+                self.write_zip([("README.md", b"# Versions"), ("older/version" + suffix, b"archive")])
+                original = self.input.read_bytes()
+                with self.assertRaisesRegex(bundle.BundleError, "tệp nén con"):
+                    self.run_bundle()
+                self.assertEqual(self.input.read_bytes(), original)
+                self.assertFalse(self.output.exists())
+        # A filename resembling private state does not exempt a whole archive;
+        # only excluded directories are safe to omit without inspecting it.
+        for name in ["version/accounts.sqlite3.zip", "version/.env.zip"]:
+            with self.subTest(name=name):
+                self.write_zip([("README.md", b"# Versions"), (name, b"archive")])
+                with self.assertRaisesRegex(bundle.BundleError, "tệp nén con"):
+                    self.run_bundle()
+                self.assertFalse(self.output.exists())
+
+    def test_nested_archives_in_excluded_directories_are_not_opened(self):
+        ignored = ["version/node_modules/lib/archive.zip", "version/.venv/archive.7z",
+                   "version/artifacts/archive.tar.gz", "version/.cache/archive.rar"]
+        private = ["version/private-event-models/archive.zip", "version/event-agent-state/archive.tar.xz"]
+        self.write_zip([("version/app.py", b"# source")] + [(name, b"private or generated") for name in ignored + private])
+        original_open = zipfile.ZipFile.open
+        def guarded_open(archive, member, *args, **kwargs):
+            name = member.filename if isinstance(member, zipfile.ZipInfo) else member
+            if name in ignored + private:
+                raise AssertionError("excluded archives must not be opened")
+            return original_open(archive, member, *args, **kwargs)
+        from unittest.mock import patch
+        with patch.object(zipfile.ZipFile, "open", guarded_open):
+            self.run_bundle()
+        content, manifest = self.read_result()
+        self.assertEqual(set(content), {"version/app.py", bundle.MANIFEST_NAME})
+        self.assertEqual({entry["path"] for entry in manifest["private_recovery_inventory"]}, set(private))
+        self.assertEqual(sum(manifest["ignored_file_counts"].values()), len(ignored))
+
+    def test_nested_archive_error_lists_only_bounded_paths(self):
+        paths = [f"version-{number}/" + "long-name-" * 20 + ".zip" for number in range(8)]
+        self.write_zip([("README.md", b"# Versions")] + [(name, b"archive") for name in paths])
+        with self.assertRaises(bundle.BundleError) as caught:
+            self.run_bundle()
+        message = str(caught.exception)
+        self.assertIn("8 tệp nén con", message)
+        self.assertIn("và 3 tệp khác", message)
+        self.assertIn("version-0/", message)
+        self.assertNotIn("version-5/", message)
+        self.assertLess(len(message), 1500)
+        self.assertFalse(self.output.exists())
+
+    def test_cli_nested_archive_failure_does_not_announce_or_leave_output(self):
+        self.write_zip([("README.md", b"# Versions"), ("older.zip", b"archive")])
+        original = self.input.read_bytes()
+        result = subprocess.run([sys.executable, str(SCRIPT), "--input", str(self.input),
+                                 "--output", str(self.output)], capture_output=True, text=True,
+                                encoding="utf-8", timeout=20)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("older.zip", result.stderr)
+        self.assertIn("Không tạo ZIP đầu ra", result.stderr)
+        self.assertNotIn("Đã tạo:", result.stdout)
+        self.assertFalse(self.output.exists())
+        self.assertEqual(self.input.read_bytes(), original)
 
     def test_cli_works_without_tkinter_or_external_dependencies(self):
         self.write_zip([("one/app.py", b"# one")])

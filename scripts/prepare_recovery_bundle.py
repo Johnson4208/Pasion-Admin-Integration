@@ -26,6 +26,11 @@ IGNORED_DIRS = {
     "artifacts", "site-packages", ".tox", ".nox", ".idea", ".vscode",
 }
 PRIVATE_DIRS = {"event-agent-state", "private-event-models"}
+ARCHIVE_SUFFIXES = (
+    ".zip", ".zipx", ".7z", ".rar", ".tar", ".tar.gz", ".tgz", ".tar.bz2",
+    ".tbz", ".tbz2", ".tar.xz", ".txz", ".tar.lz", ".tar.lzma", ".tlz",
+    ".tar.zst", ".tzst", ".tar.z", ".taz", ".tar.lz4",
+)
 SOURCE_SUFFIXES = {
     ".py", ".pyi", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue",
     ".svelte", ".css", ".scss", ".sass", ".less", ".html", ".htm", ".svg",
@@ -87,7 +92,8 @@ def safe_name(info: zipfile.ZipInfo) -> tuple[str, bool]:
         raise BundleError(f"Đường dẫn ZIP không an toàn: {original!r}")
     parts = name.split("/")
     for part in parts:
-        if (part in {"", ".", ".."} or ":" in part or part.endswith((" ", "."))
+        if (part in {"", ".", ".."} or any(char in '<>:"|?*' for char in part)
+                or part.endswith((" ", "."))
                 or any(ord(char) < 32 for char in part)
                 or part.split(".", 1)[0].casefold() in RESERVED_NAMES):
             raise BundleError(f"Đường dẫn ZIP không an toàn trên Windows: {original!r}")
@@ -105,6 +111,8 @@ def classify(name: str) -> str:
         return "dependencies-or-generated"
     if any(part in PRIVATE_DIRS for part in parts[:-1]):
         return "private-runtime-directory"
+    if base.endswith(ARCHIVE_SUFFIXES):
+        return "nested-archive"
     if (base in {"recovery-manifest.json", "recovery-incomplete.txt"} or
             re.match(r"^(?:backend-)?recover(?:y)?[-_].*(?:report|inventory|manifest).*\.json$", base)):
         return "private-recovery-report"
@@ -232,6 +240,18 @@ def prepare_bundle(input_path: str | Path, output_path: str | Path | None = None
                 components = key.split("/")
                 if any("/".join(components[:index]) in file_keys for index in range(1, len(components))):
                     raise BundleError("ZIP có file trùng với tên thư mục cha. Hãy nén lại từ thư mục gốc.")
+            nested = [name for _, name, is_dir, category in validated
+                      if not is_dir and category == "nested-archive"]
+            if nested:
+                examples = "\n".join("- " + (name if len(name) <= 160 else name[:157] + "...")
+                                     for name in nested[:5])
+                remaining = f"\n... và {len(nested) - 5} tệp khác." if len(nested) > 5 else ""
+                raise BundleError(
+                    f"Phát hiện {len(nested)} tệp nén con chưa được mở:\n{examples}{remaining}\n"
+                    "Không tạo ZIP đầu ra vì có thể thiếu mã nguồn của các phiên bản. "
+                    "Hãy giải nén từng tệp nén con vào thư mục riêng, giữ tên phiên bản khác nhau, "
+                    "rồi nén chung các thư mục và chạy lại. ZIP gốc giữ nguyên."
+                )
 
             included = []
             private = []

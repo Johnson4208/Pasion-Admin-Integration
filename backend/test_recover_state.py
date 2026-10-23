@@ -232,6 +232,19 @@ class RecoverStateTests(unittest.TestCase):
         with closing(sqlite3.connect(self.output / 'backend/accounts.sqlite3')) as connection, connection:
             self.assertEqual(connection.execute('SELECT email FROM accounts').fetchone()[0], ACCOUNT_EMAIL)
 
+    def test_windows_case_variants_of_private_configs_and_runtime_directories_are_excluded(self):
+        self.accounts()
+        private_paths = ['backend/MAIL-CONFIG.JSON', 'backend/Credentials.Json',
+                         'backend/PRIVATE-EVENT-MODELS/catalog.json',
+                         'backend/NODE_MODULES/private.json', 'backend/VeNv/private.py']
+        for relative in private_paths:
+            path = self.latest / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('PRIVATE_SYNTHETIC_CONFIGURATION', encoding='utf-8')
+        recovery.assemble(self.latest, self.old, self.output, stopped=True)
+        for relative in private_paths:
+            self.assertFalse((self.output / relative).exists(), relative)
+
     def test_inspection_and_reports_do_not_disclose_account_or_config_values(self):
         self.accounts()
         (self.old / 'backend/mail-config.json').write_text('{"password":"PRIVATE_SMTP_PASSWORD"}')
@@ -268,6 +281,21 @@ class RecoverStateTests(unittest.TestCase):
                 with self.assertRaises(recovery.RecoveryError):
                     recovery.assemble(self.latest, self.old, output, stopped=True)
                 self.assertFalse(output.exists())
+
+    def test_incomplete_latest_and_state_projects_are_rejected(self):
+        self.accounts()
+        for root in (self.latest, self.old):
+            with self.subTest(root=root.name):
+                marker = root / 'recovery-INCOMPLETE.txt'
+                marker.write_text('A previous operation was interrupted')
+                before = self.source_snapshot(root)
+                try:
+                    self.rejected()
+                    self.assertEqual(before, self.source_snapshot(root))
+                    with self.assertRaises(recovery.RecoveryError):
+                        recovery.inspect_project(root)
+                finally:
+                    marker.unlink()
 
     def test_required_project_structure_is_validated(self):
         self.accounts()
@@ -451,6 +479,124 @@ class RecoverStateTests(unittest.TestCase):
         with patch.object(recovery.shutil, 'copyfile', side_effect=change_source_after_copy):
             self.rejected()
         self.assertTrue(mutated)
+
+    def test_state_changes_after_snapshot_and_during_installation_are_rejected(self):
+        path = self.accounts()
+        check = recovery._cross_checks
+        move = recovery.shutil.move
+
+        def change_source():
+            with closing(sqlite3.connect(path)) as connection, connection:
+                connection.execute('UPDATE accounts SET name=name || ?', (' changed',))
+
+        def change_after_snapshot(staged):
+            change_source()
+            return check(staged)
+
+        with patch.object(recovery, '_cross_checks', side_effect=change_after_snapshot):
+            self.rejected()
+
+        def change_during_installation(source, destination, *args, **kwargs):
+            result = move(source, destination, *args, **kwargs)
+            change_source()
+            return result
+
+        with patch.object(recovery.shutil, 'move', side_effect=change_during_installation):
+            self.rejected()
+
+    def test_latest_code_changes_after_copying_are_detected(self):
+        self.accounts()
+        copy = recovery.shutil.copyfile
+        marker = self.latest / 'backend/server.py'
+        before = self.source_snapshot(self.old)
+
+        def change_previously_copied_code(source, destination, *args, **kwargs):
+            result = copy(source, destination, *args, **kwargs)
+            if Path(source) == self.latest / 'src/App.jsx':
+                marker.write_text('NEWER_BACKEND_CHANGED_DURING_COPY')
+            return result
+
+        with patch.object(recovery.shutil, 'copyfile', side_effect=change_previously_copied_code):
+            self.rejected()
+        self.assertEqual(before, self.source_snapshot(self.old))
+
+    def test_copied_state_must_match_fingerprint_even_if_original_path_is_restored(self):
+        source = self.accounts()
+        alternate_root = self.root / 'alternate'
+        (alternate_root / 'backend').mkdir(parents=True)
+        alternate = self.accounts(root=alternate_root)
+        with closing(sqlite3.connect(alternate)) as connection, connection:
+            connection.execute('UPDATE accounts SET name=?', ('Different copied state',))
+        before = self.source_snapshot(self.old)
+        copy = recovery.shutil.copyfile
+
+        def swap_during_copy(path, destination, *args, **kwargs):
+            if Path(path) != source:
+                return copy(path, destination, *args, **kwargs)
+            held = self.root / 'held-original.sqlite3'
+            source.rename(held)
+            alternate.rename(source)
+            try:
+                return copy(path, destination, *args, **kwargs)
+            finally:
+                source.rename(alternate)
+                held.rename(source)
+
+        with patch.object(recovery.shutil, 'copyfile', side_effect=swap_during_copy):
+            self.rejected()
+        self.assertEqual(before, self.source_snapshot(self.old))
+
+    def test_failed_partial_cleanup_recreates_the_incomplete_marker(self):
+        self.accounts()
+        before = self.source_snapshot(self.old)
+        move, remove = recovery.shutil.move, recovery.shutil.rmtree
+        moved = 0
+
+        def fail_after_one_move(source, destination, *args, **kwargs):
+            nonlocal moved
+            moved += 1
+            if moved > 1:
+                raise PermissionError('Synthetic Windows move failure')
+            return move(source, destination, *args, **kwargs)
+
+        def fail_after_removing_marker(path, *args, **kwargs):
+            if Path(path) == self.output:
+                (self.output / 'RECOVERY-INCOMPLETE.txt').unlink(missing_ok=True)
+                raise PermissionError('Synthetic Windows locked output file')
+            return remove(path, *args, **kwargs)
+
+        with patch.object(recovery.shutil, 'move', side_effect=fail_after_one_move), \
+                patch.object(recovery.shutil, 'rmtree', side_effect=fail_after_removing_marker):
+            with self.assertRaisesRegex(recovery.RecoveryError, 'remains marked RECOVERY-INCOMPLETE'):
+                recovery.assemble(self.latest, self.old, self.output, stopped=True)
+        self.assertTrue((self.output / 'RECOVERY-INCOMPLETE.txt').is_file())
+        self.assertEqual(before, self.source_snapshot(self.old))
+
+    def test_failed_cleanup_and_marker_write_produce_an_explicit_unusable_output_error(self):
+        self.accounts()
+        remove, mark = recovery.shutil.rmtree, recovery._mark_incomplete
+        marking = 0
+
+        def mark_only_once(output):
+            nonlocal marking
+            marking += 1
+            if marking > 1:
+                raise PermissionError('Synthetic marker write denial')
+            return mark(output)
+
+        def fail_partial_cleanup(path, *args, **kwargs):
+            if Path(path) == self.output:
+                (self.output / 'RECOVERY-INCOMPLETE.txt').unlink(missing_ok=True)
+                raise PermissionError('Synthetic cleanup denial')
+            return remove(path, *args, **kwargs)
+
+        with patch.object(recovery, '_mark_incomplete', side_effect=mark_only_once), \
+                patch.object(recovery.shutil, 'move', side_effect=PermissionError('Synthetic move failure')), \
+                patch.object(recovery.shutil, 'rmtree', side_effect=fail_partial_cleanup):
+            with self.assertRaisesRegex(recovery.RecoveryError, 'could not be marked') as raised:
+                recovery.assemble(self.latest, self.old, self.output, stopped=True)
+        self.assertIn(str(self.output), str(raised.exception))
+        self.assertTrue(self.output.exists())
 
 
 if __name__ == '__main__':

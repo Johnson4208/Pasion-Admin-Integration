@@ -16,10 +16,10 @@ Mục tiêu là **một thư mục ứng dụng hoàn chỉnh**: mã nguồn m�
 npm.cmd ci
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --timeout 120 --retries 10 --disable-pip-version-check -r backend/requirements-documents.txt
-npm.cmd run dev:full
+npm.cmd run dev
 ```
 
-Mở **http://127.0.0.1:5173**. Các lần sau chỉ cần `npm.cmd run dev:full` trong cùng thư mục. Không dùng lại `.venv` hay `node_modules` chép từ bản cũ.
+Mở **http://127.0.0.1:5173**. Các lần sau mở **RUN-PASION.cmd** hoặc chạy `npm.cmd run dev` trong cùng thư mục. Lệnh `dev:full` cũ vẫn hoạt động. Không dùng lại `.venv` hay `node_modules` chép từ bản cũ. Nếu cổng đang bận, dừng bản đã chạy; công cụ không tự chuyển sang địa chỉ khác.
 
 Nếu không tìm thấy Python: cài bằng `winget install --exact --id Python.Python.3.12`, mở CMD mới và thử `py -3.12 --version`. Nếu cửa sổ chọn thư mục không hoạt động, dùng lệnh bên dưới.
 
@@ -53,6 +53,6 @@ Các kho được nhận diện: `backend/accounts.sqlite3`, `documents.sqlite3`
 
 Công cụ tạo bản sao tạm của SQLite và WAL rồi dùng SQLite Backup API, nên các giao dịch đã commit trong WAL được giữ. Nó không mở SQLite trên tệp gốc, không nối bảng từ nhiều bản, và không bỏ qua lỗi dữ liệu. Nó kiểm tra tính toàn vẹn, khóa ngoại, liên kết tài liệu được biết, lược đồ tối thiểu và định dạng băm hiện hành; không thể chứng minh mọi quy tắc nghiệp vụ của một bản cũ chưa được đối chiếu. Các tệp phải đứng yên trong suốt quá trình: kiểm tra từng SQLite không thay thế việc dừng dịch vụ để có một bộ dữ liệu nhất quán.
 
-Đầu ra không ghi đè thư mục có sẵn. Khi có lỗi thông thường, thư mục đầu ra mới được dọn; bản gốc còn nguyên. Nếu mất điện hoặc tiến trình bị kết thúc giữa lúc hoàn tất, thư mục có thể còn `RECOVERY-INCOMPLETE.txt`: **không chạy thư mục đó**, chọn tên đầu ra mới rồi làm lại. Giữ bản gốc đến khi kiểm tra được đăng nhập, quyền quản trị, tài liệu và dữ liệu tài chính trên bản mới.
+Đầu ra không ghi đè thư mục có sẵn. Công cụ đối chiếu mã nguồn và dữ liệu ở đầu/cuối quá trình, đồng thời kiểm tra bản sao SQLite/WAL trước khi mở chúng. Khi có lỗi thông thường, thư mục đầu ra mới được dọn; bản gốc còn nguyên. Nếu mất điện hoặc tiến trình bị kết thúc giữa lúc hoàn tất, thư mục có thể còn `RECOVERY-INCOMPLETE.txt`: **không chạy thư mục đó**, chọn tên đầu ra mới rồi làm lại. Thư mục nguồn có dấu này cũng bị từ chối; `npm run dev` và `RUN-PASION.cmd` chặn khởi động bản dở dang. Nếu lỗi quyền truy cập ngăn việc dọn hoặc đánh dấu, thông báo lỗi chỉ rõ đầu ra không dùng được. Giữ bản gốc đến khi kiểm tra được đăng nhập, quyền quản trị, tài liệu và dữ liệu tài chính trên bản mới.
 
 `recovery-manifest.json` ghi các kho đã chuyển và kết quả kiểm tra, không chứa dữ liệu từng bản ghi. **Toàn bộ thư mục khôi phục có dữ liệu riêng tư: không nén gửi lại và không đẩy lên Git.** Nếu cần gửi mã để đối chiếu, dùng `PREPARE-RECOVERY.cmd` để tạo gói chỉ chứa mã nguồn.
