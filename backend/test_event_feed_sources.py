@@ -1,4 +1,5 @@
 import unittest
+import json
 from unittest.mock import patch
 import event_feed_sources as s
 
@@ -24,4 +25,25 @@ class RegionalNewsTests(unittest.TestCase):
   self.assertEqual(coverage['feed_successes'],4)
   self.assertEqual(coverage['requests'],5)
   self.assertTrue(rows)
+
+ def test_gdelt_preserves_seconds_and_first_seen_time_basis(self):
+  payload={'articles':[{'title':'GDP report','url':'https://example.org/gdp','domain':'example.org','seendate':'20200102T123456Z'}]}
+  with patch.object(s,'_get',return_value=json.dumps(payload).encode()):
+   rows=s._gdelt('GDP')
+  self.assertEqual(rows[0]['published_at'],'2020-01-02T12:34:56+00:00')
+  self.assertEqual(rows[0]['time_basis'],'FIRST_SEEN')
+
+ def test_scope_is_distinct_from_foreign_and_unconfirmed_context(self):
+  self.assertEqual(s.scope_relation('Lạm phát Việt Nam hạ nhiệt','','Vietnam'),'DIRECT_SCOPE')
+  self.assertEqual(s.scope_relation('US inflation rises','','Vietnam','Federal Reserve'),'EXTERNAL_CONTEXT')
+  self.assertEqual(s.scope_relation('Inflation report released','','Vietnam'),'UNVERIFIED_SCOPE')
+  self.assertEqual(s.scope_relation('Inflation report released','','World'),'GLOBAL_SCOPE')
+  self.assertEqual(s.scope_relation('US inflation rises','','United States'),'DIRECT_SCOPE')
+  self.assertEqual(s.scope_relation('U.S. inflation rises','','Vietnam'),'EXTERNAL_CONTEXT')
+  self.assertEqual(s.scope_relation('Tell us about inflation','','United States'),'UNVERIFIED_SCOPE')
+
+ def test_publisher_name_cannot_establish_the_articles_geographical_scope(self):
+  self.assertEqual(s.scope_relation('Iran conflict could spread - Vietnam.vn','Iran conflict Vietnam.vn','Vietnam','Vietnam.vn'),'EXTERNAL_CONTEXT')
+  self.assertEqual(s.scope_relation('Inflation report - Vietnam.vn','Inflation data Vietnam.vn','Vietnam','Vietnam.vn'),'UNVERIFIED_SCOPE')
+  self.assertEqual(s.scope_relation('Vietnam inflation cools - Vietnam.vn','','Vietnam','Vietnam.vn'),'DIRECT_SCOPE')
 if __name__=='__main__':unittest.main()

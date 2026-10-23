@@ -113,7 +113,7 @@ def _gdelt(query):
   title=_text(article.get('title'))
   source=_text(article.get('domain') or parsed.hostname)
   raw=str(article.get('seendate') or '')
-  try:when=datetime.strptime(raw[:14],'%Y%m%dT%H%M%S').replace(tzinfo=timezone.utc)
+  try:when=datetime.strptime(raw[:15],'%Y%m%dT%H%M%S').replace(tzinfo=timezone.utc)
   except ValueError:
    try:when=datetime.strptime(raw[:8],'%Y%m%d').replace(tzinfo=timezone.utc)
    except ValueError:continue
@@ -242,3 +242,41 @@ def retrieve(topic_terms,focus):
  return results,{'region':region[0],'scope_query':region[1],'requests':len(jobs),
    'feed_successes':succeeded,'feed_failures':failed,'raw_results':len(results),
    'providers':sorted({r['provider'] for r in results})}
+
+
+def scope_relation(title, description, focus, source=''):
+ """Keep international context visible without treating it as local evidence."""
+ from event_topic_matcher import normalize
+ region=geography(focus)[0]
+ if region=='World':return 'GLOBAL_SCOPE'
+ aliases={
+  'Vietnam':('vietnam','viet nam','vietnamese'),
+  'United States':('united states','usa','u s','american','federal reserve'),
+  'Asia':('asia','asian','asean','vietnam','viet nam','china','japan','korea','india','taiwan','singapore','thailand','indonesia','malaysia'),
+  'Southeast Asia':('asean','southeast asia','vietnam','viet nam','singapore','thailand','indonesia','malaysia','philippines','cambodia','laos','myanmar'),
+  'Europe':('europe','european','eurozone','germany','france','italy','spain','united kingdom','britain'),
+  'Middle East':('middle east','gulf','israel','iran','saudi','iraq'),
+  'Africa':('africa','african'),
+  'Latin America':('latin america','south america','brazil','mexico'),
+ }
+ # RSS often appends the outlet to BOTH headline and snippet. An Iran story
+ # published by "Vietnam.vn" is not evidence about Vietnam.
+ publisher=normalize(source)
+ def article_text(value):
+  text=normalize(value)
+  if publisher and (text==publisher or text.endswith(' '+publisher)):
+   text=text[:-len(publisher)].strip()
+  return text
+ content=article_text(title)+' '+article_text(description)
+ without_publisher=re.sub(r'\s*[-–—|]\s*'+re.escape(str(source))+r'\s*$','',str(title or '')) if source else str(title or '')
+ us_abbreviation=bool(re.search(r'\b(?:US|U\.S\.?)(?=\s|[,:;]|$)',without_publisher+' '+str(description or '')))
+ if region=='United States' and us_abbreviation:return 'DIRECT_SCOPE'
+ for term in aliases.get(region,(normalize(region),)):
+  if re.search(r'\b'+re.escape(term)+r'\b',content):return 'DIRECT_SCOPE'
+ # An official source's place of publication alone does not prove the
+ # article concerns that place, but Fed-only reporting is external to Vietnam.
+ if region!='United States' and 'federal reserve' in normalize(source):return 'EXTERNAL_CONTEXT'
+ if us_abbreviation:return 'EXTERNAL_CONTEXT'
+ foreign={term for area,terms in aliases.items() if area!=region for term in terms}
+ if any(re.search(r'\b'+re.escape(term)+r'\b',content) for term in foreign):return 'EXTERNAL_CONTEXT'
+ return 'UNVERIFIED_SCOPE'

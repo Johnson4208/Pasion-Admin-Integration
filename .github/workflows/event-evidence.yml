@@ -3,29 +3,34 @@ on:
   push:
     branches: [main]
     paths:
-      - 'backend/event_news_preview.py'
-      - 'backend/event_feed_sources.py'
-      - 'backend/event_bayesian.py'
-      - 'backend/event_experimental_probability.py'
-      - 'backend/event_topic_matcher.py'
-      - 'backend/test_event_topic_matcher.py'
-      - 'backend/event_scenario_board.py'
-      - 'backend/event_horizons.py'
-      - 'backend/event_agent.py'
-      - 'backend/event_agent_store.py'
-      - 'backend/test_event_news_preview.py'
-      - 'backend/test_event_feed_sources.py'
-      - 'backend/test_event_bayesian.py'
-      - 'backend/test_event_scenario_board.py'
-      - 'backend/test_event_agent_store.py'
+      - 'backend/event_*.py'
+      - 'backend/test_event*.py'
       - 'src/EventScenarios.jsx'
+      - 'src/EventScenarioComparison.jsx'
+      - 'src/eventScenarios.js'
       - 'src/event-scenarios.scss'
+      - 'src/translations*.js'
+      - 'src/HomePage.jsx'
+      - 'tests/f10.spec.js'
+      - 'tests/fixtures/event-*.json'
+      - 'unit/eventScenarios.test.js'
+      - 'playwright.config.js'
       - '.github/workflows/event-evidence.yml'
   pull_request:
     paths:
-      - 'backend/event_news_preview.py'
-      - 'backend/test_event_news_preview.py'
+      - 'backend/event_*.py'
+      - 'backend/test_event*.py'
       - 'src/EventScenarios.jsx'
+      - 'src/EventScenarioComparison.jsx'
+      - 'src/eventScenarios.js'
+      - 'src/event-scenarios.scss'
+      - 'src/translations*.js'
+      - 'src/HomePage.jsx'
+      - 'tests/f10.spec.js'
+      - 'tests/fixtures/event-*.json'
+      - 'unit/eventScenarios.test.js'
+      - 'playwright.config.js'
+      - '.github/workflows/event-evidence.yml'
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -34,17 +39,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Run isolated event research tests
-        run: |
-          python -m unittest discover -s backend -p 'test_event_news_preview.py' -v
-          python -m unittest discover -s backend -p 'test_event_topic_matcher.py' -v
-          python -m unittest discover -s backend -p 'test_event_feed_sources.py' -v
-          python -m unittest discover -s backend -p 'test_event_bayesian.py' -v
-          python -m unittest discover -s backend -p 'test_event_scenario_board.py' -v
-          python -m unittest discover -s backend -p 'test_event_agent_store.py' -v
+      - name: Run event research and API regressions
+        run: python -m unittest discover -s backend -p 'test_event*.py' -v
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: npm run test:unit
+      - name: Install browser for Event UI regression tests
+        run: npx playwright install --with-deps chromium
+      - name: Verify Event research interactions
+        run: npm run test:ui -- tests/f10.spec.js

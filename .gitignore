@@ -7,6 +7,7 @@ __pycache__/
 .env
 *.log
 backend/mail-config.json
+backend/private-event-models/
 test-results/
 playwright-report/
 .venv/

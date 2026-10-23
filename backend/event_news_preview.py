@@ -15,6 +15,9 @@ import event_bayesian
 import event_scenario_board
 import event_horizons
 import event_topic_matcher
+import event_direction
+import event_forecasts
+import event_outcome_data
 
 _TOPICS={
  'Geopolitics': {'Conflict risk':('conflict escalation ceasefire regional security','conflict escalation ceasefire stability'),
@@ -54,8 +57,6 @@ _TOPICS={
  'Semiconductor supply':('semiconductor chip production capacity','chip shortage surplus'),
  'Cybersecurity':('cybersecurity breaches threats regulation','cybersecurity incidents reduction')}
 }
-_NEG=('escalat','surge','increase','tighten','shortage','disrupt','risk','crisis','recession','inflation rises','sanction','declin','weak','cut','hike','fall','contract','drop','warn','stress','layoff')
-_POS=('eas','improv','recover','rebound','cool','decline in inflation','ceasefire','expand','growth','relief','stabiliz','strong','surplus','deescalat','approve')
 _lock=threading.RLock()
 _cache={}
 _TTL=900
@@ -100,22 +101,40 @@ def fetch(query,focus):
   rows.append({'title':title,'url':link,'source':origin,'published_at':when.isoformat(),'description':desc})
  return rows
 
-def analyze(category,factor,focus='',horizon='30 days',now=None):
+def _with_forecast(result, basis, now):
+ # Model changes and expiry are checked even when the news snapshot is cached.
+ result=json.loads(json.dumps(result))
+ result['basis']=basis
+ result['outcome_history']=event_outcome_data.coverage(result['category'],result['factor'],result['focus'])
+ result['scenario_forecast']=event_forecasts.forecast(result['category'],result['factor'],result['focus'],result['horizon'],basis,now)
+ if result['scenario_forecast']['status']=='REFERENCE_ESTIMATE_AVAILABLE' and result['status']=='UNAVAILABLE':
+  result['status']='FORECAST_AVAILABLE'
+ return result
+
+
+def analyze(category,factor,focus='',horizon='30 days',now=None,basis='END_STATE'):
  now=now or datetime.now(timezone.utc)
+ if basis not in event_forecasts.BASES:raise ValueError('Unsupported probability basis')
  if factor not in _TOPICS.get(category,{}):raise ValueError('Unsupported category or event factor')
  horizon_info=event_horizons.info(horizon)
  if not isinstance(focus,str) or len(focus)>120 or any(c in focus for c in '\r\n\x00'):raise ValueError('Invalid geographical focus')
+ focus=focus.strip()
+ event_feed_sources.geography(focus)
  lookback=horizon_info['news_lookback_days']
  key=(category,factor,focus,horizon)
  with _lock:
   saved=_cache.get(key)
-  if saved and time.monotonic()-saved[0]<_TTL:return json.loads(json.dumps(saved[1]))
+  if saved and time.monotonic()-saved[0]<_TTL:return _with_forecast(saved[1],basis,now)
  terms,_=_TOPICS[category][factor]
  try:rows,coverage=event_feed_sources.retrieve(terms,focus)
- except event_feed_sources.FeedError as exc:raise Unavailable(str(exc)) from exc
+ except event_feed_sources.FeedError as exc:
+  # A reviewed historical baseline does not depend on today's news transport.
+  forecast=event_forecasts.forecast(category,factor,focus,horizon,basis,now)
+  if forecast['status']!='REFERENCE_ESTIMATE_AVAILABLE':raise Unavailable(str(exc)) from exc
+  rows,coverage=[],{'feed_successes':0,'requests':None,'status':'UNAVAILABLE','reason_code':str(exc)}
  seen=set();items=[];age_limit=lookback
  diagnostics={'retrieved':len(rows),'stale':0,'duplicate':0,'off_topic':0,'accepted':0,'future':0,'invalid':0}
- for row in rows:
+ for row in sorted(rows,key=lambda r:(str(r.get('published_at','')),str(r.get('title','')),str(r.get('source',''))),reverse=True):
   try:
    t=datetime.fromisoformat(row['published_at'])
    age=(now-t).total_seconds()/86400
@@ -126,7 +145,7 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
   if age>age_limit:
    diagnostics['stale']+=1;continue
   # Source title and normalized headline are a rough story cluster.
-  tokens=sorted(_tokens(row['title'])-_tokens(row['source']))
+  tokens=sorted(event_topic_matcher.tokens(row['title'])-event_topic_matcher.tokens(row['source']))
   group=hashlib.sha256((' '.join(tokens)).encode()).hexdigest()[:16]
   if group in seen:
    diagnostics['duplicate']+=1;continue
@@ -135,36 +154,39 @@ def analyze(category,factor,focus='',horizon='30 days',now=None):
    diagnostics['off_topic']+=1;continue
   seen.add(group)
   query_relevance=match['relevance']
-  text=(row['title']+' '+row['description']).casefold()
-  positive=sum(1 for w in _POS if w in text);negative=sum(1 for w in _NEG if w in text)
-  direction=(positive-negative)/max(1,positive+negative)
+  signal=event_direction.inspect(row['title'],row.get('description',''),factor)
+  relation=event_feed_sources.scope_relation(row['title'],row.get('description',''),focus,row.get('source',''))
   # Relevance/recency are heuristic research weights, not truth confidence.
   freshness=math.exp(-age/10)
   provenance_multiplier=1.15 if row.get('source_tier')=='PRIMARY_OFFICIAL_UNVERIFIED_CLAIM' else 1.0
   weight=max(.02,query_relevance)*(.25+.75*freshness)*provenance_multiplier
   diagnostics['accepted']+=1
   items.append({**row,'topic_match_reason':match['reason'],'topic_matched_terms':match['matched'],'id':group,'cluster_id':group,'age_days':round(age,1),'relevance':round(query_relevance,3),
-    'direction':round(direction,3),'weight':round(weight,5),'provenance_multiplier':provenance_multiplier,'source_tier':row.get('source_tier','RSS_AGGREGATED_UNVERIFIED')})
- # An independent source count is NOT measured from one aggregator.
- if len(items)<1:
-  return {'version':1,'status':'UNAVAILABLE','reason_code':'INSUFFICIENT_RECENT_DISTINCT_STORIES',
-   'items':items,'outcomes':[],'filter_diagnostics':diagnostics,'horizon_info':horizon_info,'dynamic_scenarios':event_scenario_board.candidates(items,factor,focus,horizon),'source_count':len(items),'independent_source_count':None,'coverage':coverage,'bayesian_forecast':event_bayesian.unavailable(),
-   'calibrated_probability':False,'probability_status':'UNAVAILABLE_NO_CALIBRATED_EVENT_MODEL'}
- total=sum(x['weight'] for x in items)
- tilt=sum(x['direction']*x['weight'] for x in items)/total
- # Softmax with strong shrinkage: evidence comparison only, cannot be calibrated.
- raw=[math.exp(-.9*tilt),math.exp(.25-.75*abs(tilt)),math.exp(.9*tilt)]
- denom=sum(raw);shares=_round_shares([x/denom for x in raw])
- counts=[sum(1 for x in items if x['direction']<-.1),sum(1 for x in items if abs(x['direction'])<=.1),sum(1 for x in items if x['direction']>.1)]
- result={'version':1,'status':'EVIDENCE_AVAILABLE','horizon_info':horizon_info,'category':category,'factor':factor,'focus':focus,'horizon':horizon,
+    **signal,'geographic_relation':relation,'weight':round(weight,5),'provenance_multiplier':provenance_multiplier,'source_tier':row.get('source_tier','RSS_AGGREGATED_UNVERIFIED')})
+ # Source attribution is not a measurement of publisher independence.
+ items.sort(key=lambda x:(-x['weight'],x['id']))
+ eligible=[x for x in items if x['geographic_relation'] in ('GLOBAL_SCOPE','DIRECT_SCOPE')]
+ total=sum(x['weight'] for x in eligible)
+ bucket=[sum(x['weight'] for x in eligible if x['direction']<-.1),
+         sum(x['weight'] for x in eligible if abs(x['direction'])<=.1),
+         sum(x['weight'] for x in eligible if x['direction']>.1)]
+ shares=_round_shares([weight/total for weight in bucket]) if total else []
+ counts=[sum(x['direction']<-.1 for x in eligible),sum(abs(x['direction'])<=.1 for x in eligible),sum(x['direction']>.1 for x in eligible)]
+ result={'version':1,'status':'EVIDENCE_AVAILABLE' if items else 'UNAVAILABLE',
+  'horizon_info':{**horizon_info,'model_status':'NO_VALIDATED_HORIZON_MODEL'},
+  'category':category,'factor':factor,'focus':focus or 'World','horizon':horizon,
   'outcomes':[{'id':key,'share_pct':pct,'evidence_count':count} for key,pct,count in zip(('weakening','mixed','supportive'),shares,counts)],
-  'items':sorted(items,key=lambda x:x['weight'],reverse=True)[:24],'filter_diagnostics':diagnostics,'source_count':len(items),
+  'items':items,'filter_diagnostics':diagnostics,'source_count':len(items),'scope_source_count':len(eligible),
+  'directional_source_count':sum(x['direction_status']=='DIRECTIONAL' for x in eligible),
   'independent_source_count':None,'coverage':coverage,'generated_at':now.isoformat(),
-  'bayesian_forecast':event_bayesian.unavailable(),
+  'bayesian_forecast':event_bayesian.unavailable(),'calibrated_probability':False,
   'dynamic_scenarios':event_scenario_board.candidates(items,factor,focus,horizon),
-  'evidence_sufficiency':'SINGLE_SOURCE_LOW' if len(items)==1 else 'MULTI_STORY_UNVERIFIED',
-  'model':{'name':'solvai58-inspired-rss-evidence-share-v2','components':['recent RSS','query relevance','directional lexicon','deduplicated headlines','explicit primary-source provenance uplift (heuristic)'],
-   'calibrated_probability':False,'label':'Evidence-weighted share','warning':'Not a probability. News publication and sentiment are not proof of event outcomes.'},
+  'evidence_sufficiency':'SINGLE_SOURCE_LOW' if len(items)==1 else 'MULTI_STORY_UNVERIFIED' if items else 'NO_EVIDENCE',
+  'model':{'name':'reported-event-evidence-v3','direction_method':event_direction.VERSION,
+   'components':['dated public reporting','topic and geographic relevance','conservative reported direction','supporting and opposing stories'],
+   'calibrated_probability':False,'label':'Evidence balance',
+   'warning':'Reported evidence is not an event probability. Forecast horizon is research context, not a validated time-to-event model.'},
   'probability_status':'UNAVAILABLE_NO_CALIBRATED_EVENT_MODEL'}
+ if not items:result['reason_code']='INSUFFICIENT_RECENT_DISTINCT_STORIES'
  with _lock:_cache[key]=(time.monotonic(),result)
- return result
+ return _with_forecast(result,basis,now)

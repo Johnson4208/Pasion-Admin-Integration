@@ -1,7 +1,21 @@
 # PASION workspace
 React + SCSS frontend and a Python demonstration API. Account features use the standard library; the admin document workspace has optional extraction and OCR dependencies.
 
-Run npm install, create the project Python environment using the document setup below, then run npm run dev:full in the project folder. This starts the frontend and backend together with the correct Python environment. In Windows PowerShell, use npm.cmd if your execution policy blocks npm.ps1.
+Install Node.js LTS (22 or 24) and Python (3.12 recommended), then open a terminal in the project folder containing `package.json`. On Windows, run each command separately and stop if one fails:
+
+```cmd
+npm.cmd ci
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend/requirements-documents.txt
+npm.cmd run dev:full
+```
+
+This starts the frontend and backend together with the project Python environment. No PowerShell activation or Administrator terminal is required. On later runs, use only `npm.cmd run dev:full` in the same folder.
+
+If `py` reports `Unable to create process` or `The system cannot find the file specified`, its registered Python executable is missing. Install Python 3.12 with `winget install --exact --id Python.Python.3.12` (or the official python.org Windows installer), reopen the terminal, and verify `py -3.12 --version` before creating `.venv`. If an existing Python 3.12 installation is damaged, repair it using its Windows installer. A `.venv` created on another computer is not portable; create it locally.
+
+Vite is patched to at least 6.4.5; `package-lock.json` records the tested dependency versions. For npm versions that require install-script approval, `allowScripts` approves only the reviewed `esbuild@0.25.12` and `@parcel/watcher@2.6.0` versions. Other packages and future versions require separate review. Funding messages are optional donation notices and do not block the app. Use `npm audit` to check current advisories; avoid forced upgrades without compatibility checks.
+
 You can also run npm run dev and .\.venv\Scripts\python.exe -X utf8 backend/server.py in separate terminals. Keep only one backend running on port 8000; a second instance now reports that the port is already occupied. Restart the backend after changing Python code.
 Open http://127.0.0.1:5173.
 
@@ -36,7 +50,7 @@ Settings and the workspace toolbar include English, Azerbaijani, Turkish, Russia
 
 Use Change photo in Settings to upload a JPG, PNG, or WebP up to 5 MB. Photos are cropped to a centered square, resized, and saved separately for each account on this browser. The photo appears in the account card and both workspace avatars; Remove photo restores initials.
 
-Run npm run test:ui for browser checks covering the public homepage, login/registration routes, and the complete menu, comparison exports, indicator controls, trade plans, macro and event scenarios, data reports, shared alerts, account flows, portfolio changes, bookmarks, full-screen panels, saved language and appearance preferences, and responsive layouts. These checks use Microsoft Edge and mock API responses without changing real accounts. Run npm run test:unit for eight calculation checks covering position sizing, risk limits, moving averages, and RSI. Run python -m unittest discover -s backend for backend checks.
+Run npm run test:ui for browser checks covering the public homepage, login/registration routes, and the complete menu, comparison exports, indicator controls, trade plans, macro and event scenarios, data reports, shared alerts, account flows, portfolio changes, bookmarks, full-screen panels, saved language and appearance preferences, and responsive layouts. These checks use Playwright Chromium and mock API responses without changing real accounts. Install the browser once with `npx playwright install chromium`; set `PLAYWRIGHT_CHANNEL=msedge` to use Microsoft Edge instead. In cloud environments with a system Chromium, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to that executable path. Run npm run test:unit for eight calculation checks covering position sizing, risk limits, moving averages, and RSI. Run python -m unittest discover -s backend for backend checks.
 
 Home, Research, News, and Portfolio each offer five selectable views based on the supplied references. Layout choices, portfolio positions, price targets, and bookmarked news save per account on this browser. The portfolio calculates value, profit/loss, and sector exposure from editable positions and sample prices. Alerts evaluate those sample prices inside the workspace; they do not send email, push notifications, or use a live feed. Research assessment numbers and peer metrics are illustrative. News cover photos are bundled locally from Unsplash.
 
@@ -63,3 +77,43 @@ npm.cmd run dev:full
 Uploads are limited to 10 MB, PDFs to 50 pages, OCR to 20 scanned pages, images to 20 megapixels, and extracted text to 200,000 characters. Uploads have a finite timeout and can be canceled. Two background workers process documents; each runs in a separate process with a 60-second hard timeout, so a stalled parser cannot block the API indefinitely. Set DOCUMENT_PROCESS_TIMEOUT to 5–300 seconds before starting the backend to adjust this limit. Failed documents retain their original for downloading and retrying. OCR can misread numbers and characters; the workspace shows extraction warnings. If OCR is unavailable on a PDF, readable native text is preserved with a warning. DOCX sections preserve document order and table cells; physical page numbers are unavailable without rendering. Convert older .doc files to DOCX or PDF before uploading.
 
 Summaries and document questions become available after configuring an AI provider on the server. With no provider configured, local extraction and search work and AI controls explain the missing connection. Set DOCUMENT_AI_PROVIDER to ollama and DOCUMENT_AI_MODEL to the name of an installed model; OLLAMA_BASE_URL defaults to http://127.0.0.1:11434. Alternatively set DOCUMENT_AI_PROVIDER to openai, DOCUMENT_AI_MODEL to a model available in your project, and OPENAI_API_KEY. Restart the API after changing environment variables. Keys stay on the server. Questions send selected extracted excerpts to the configured provider, and responses link to valid source sections. Long-document summaries explicitly disclose when they use selected excerpts. The adapters follow the [OpenAI Responses documentation](https://developers.openai.com/api/docs/guides/text) and [Ollama generate API](https://docs.ollama.com/api/generate).
+
+
+### Event Scenarios: evidence and saved reports
+
+Event Scenarios ranks research pathways by **evidence balance**, from −100 to
++100: `100 × (supporting weight − challenging weight) / all scope-eligible
+story weight`. This is not an event probability or a confidence score. Both
+supporting and opposing stories remain in the source notebook; unknown
+language and external/unconfirmed geographic context do not add directional
+support. Keyword-based direction is conservative and still requires human
+review. A single story does not establish source independence.
+
+The selected horizon sets the maturity of a forecast and, separately, the
+lookback of the evidence notebook. Short-lived/long-lived research pathways are
+filtered accordingly. No real historical model catalog is bundled. Without a
+reviewed catalog covering the exact context, the live service withholds
+probabilities. Historical experimental percentages stay hidden in older reports.
+
+The complete-outcome comparison supports end-of-period distributions and
+overlapping occurrence probabilities. It shows every model-defined outcome,
+resolution rule, 95% interval and probability gap together, including close
+alternatives. A local historical-reference estimator and later-holdout checks
+are available; they do not turn headline tone into a forecast or establish
+prospective calibration. See [EVENT_PROBABILITIES.md](EVENT_PROBABILITIES.md)
+for the real-data requirements, explicit limitations and catalog setup.
+Public outcome collection, immutable source snapshots and the remaining
+coverage gaps are documented in [EVENT_OUTCOME_SOURCES.md](EVENT_OUTCOME_SOURCES.md).
+
+Changing a filter cancels the pending request. Reports retain their original
+query and timestamp; a failed refresh labels the previous report and prevents
+saving it as a new analysis. Save report stores the complete snapshot in this
+browser. Open it from Saved research to inspect its sources or export JSON;
+local storage is not a server backup.
+
+Public retrieval needs HTTPS access to `news.google.com` and
+`api.gdeltproject.org`, plus `www.federalreserve.gov` for monetary topics and
+`mykn.kuehne-nagel.com` for Vietnam port reports. Missing feeds are reported as
+unavailable; no articles or probabilities are fabricated. Regression checks:
+`.venv/bin/python -m unittest discover -s backend -p 'test_event*.py'`,
+`npm run test:unit`, and `npm run test:ui -- tests/f10.spec.js`.

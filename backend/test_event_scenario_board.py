@@ -9,15 +9,75 @@ class ScenarioBoardTests(unittest.TestCase):
   self.assertEqual(len(r['ranked_scenarios']),10)
   self.assertEqual([x['rank'] for x in r['ranked_scenarios']],list(range(1,11)))
   self.assertTrue(all(x['probability'] is None for x in r['ranked_scenarios']))
-  self.assertTrue(any(x['experimental_probability'] is not None for x in r['ranked_scenarios']))
-  self.assertTrue(all(x['experimental_probability'] is None or x['experimental_probability']['calibrated'] is False for x in r['ranked_scenarios']))
+  self.assertTrue(all(x['experimental_probability'] is None for x in r['ranked_scenarios']))
+  self.assertEqual(r['ranking_metric'],'SIGNED_EVIDENCE_BALANCE')
+  self.assertTrue(any(x['evidence_score'] is not None for x in r['ranked_scenarios']))
   self.assertTrue(r['hypotheses_overlap'])
   self.assertEqual(r['timeframe'],'SHORT_TERM')
  def test_long_term_and_no_evidence(self):
   r=board.candidates([], 'Inflation','World','180 days')
   self.assertEqual(r['timeframe'],'LONG_TERM')
   self.assertTrue(all(x['support_index'] is None for x in r['ranked_scenarios']))
-  self.assertTrue(all(x['status']=='PENDING_EVIDENCE' for x in r['ranked_scenarios']))
+  self.assertTrue(all(x['status']=='PENDING_EVIDENCE' for x in r['ranked_scenarios'] if x['horizon_eligible']))
   self.assertTrue(all(x['experimental_probability'] is None for x in r['ranked_scenarios']))
+
+ def row(self,ident,title,direction,**extra):
+  return {'id':ident,'title':title,'description':'','weight':.7,'direction':direction,'direction_status':'DIRECTIONAL',
+          'url':'https://example.org/'+ident,'source':'Example',**extra}
+
+ def pathway(self,rows,ident='gradual_improvement',horizon='30 days'):
+  return next(x for x in board.candidates(rows,'GDP growth','World',horizon)['ranked_scenarios'] if x['id']==ident)
+
+ def test_twenty_opposing_stories_reduce_the_score(self):
+  positive=[self.row(str(i),'GDP improves gradually',1) for i in range(3)]
+  negative=[self.row('opposing-'+str(i),'GDP contracts into recession',-1) for i in range(20)]
+  before=self.pathway(positive);after=self.pathway(positive+negative)
+  self.assertEqual(before['evidence_score'],100)
+  self.assertLess(after['evidence_score'],0)
+  self.assertEqual(after['supporting_source_count'],3)
+  self.assertEqual(after['opposing_source_count'],20)
+  self.assertEqual(len(after['sources']),23)
+  self.assertTrue(all('contribution' in s and 'description' in s for s in after['sources']))
+
+ def test_full_source_trace_matches_formula_and_duplicate_cannot_boost_score(self):
+  rows=[self.row(str(i),'GDP improves gradually',1) for i in range(20)]
+  result=self.pathway(rows+[rows[0]])
+  self.assertEqual(result['supporting_source_count'],20)
+  self.assertEqual(len(result['sources']),20)
+  self.assertAlmostEqual(sum(s['contribution'] for s in result['sources'])/result['total_weight'],result['support_index'])
+
+ def test_unknown_language_does_not_support_stability(self):
+  result=self.pathway([self.row('a','GDP report released',0,direction_status='UNKNOWN')],'stable')
+  self.assertIsNone(result['evidence_score'])
+  result=self.pathway([self.row('a','GDP stable and unchanged',0,direction_status='NEUTRAL')],'stable')
+  self.assertEqual(result['evidence_score'],100)
+
+ def test_external_context_is_visible_without_influencing_local_score(self):
+  rows=[self.row('a','GDP improves gradually',1),self.row('b','GDP contracts',-1,geographic_relation='EXTERNAL_CONTEXT')]
+  result=self.pathway(rows)
+  self.assertEqual(result['evidence_score'],100)
+  self.assertEqual(result['context_source_count'],1)
+  self.assertEqual(len(result['sources']),2)
+
+ def test_horizon_filters_path_shapes_without_inventing_a_time_probability(self):
+  rows=[self.row('a','GDP declines suddenly after shock',-1)]
+  short=self.pathway(rows,'rapid_deterioration','1 day')
+  long=self.pathway(rows,'rapid_deterioration','730 days')
+  self.assertTrue(short['horizon_eligible'])
+  self.assertFalse(long['horizon_eligible'])
+  self.assertIsNone(long['evidence_score'])
+  self.assertIsNone(short['probability'])
+
+ def test_vietnamese_evidence_can_support_a_pathway(self):
+  result=self.pathway([self.row('a','GDP Việt Nam dần phục hồi',1)])
+  self.assertEqual(result['evidence_score'],100)
+
+ def test_directional_paths_do_not_require_words_describing_the_opposite_factor(self):
+  rows=[self.row('a','Vietnam CPI rises 5 percent',-1)]
+  result=self.pathway(rows,'moderate_deterioration')
+  self.assertEqual(result['evidence_score'],100)
+  self.assertEqual(result['title'],'Deterioration')
+  self.assertEqual(result['sources'][0]['evidence_role'],'SUPPORTS')
+  self.assertLess(self.pathway(rows)['evidence_score'],0)
 
 if __name__=='__main__':unittest.main()

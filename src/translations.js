@@ -4,6 +4,7 @@ import {profilePhrases} from './translations-profile.js';
 import {dashboardPhrases} from './translations-dashboard.js';
 import {documentPhrases} from './translations-documents.js';
 import {researchPhrases} from './translations-research.js';
+import {eventVietnamesePhrases} from './translations-events.js';
 
 export const languages = [
   {code: 'en', nativeName: 'English'},
@@ -475,6 +476,12 @@ const phrases = {
 };
 
 const allPhrases={...phrases,...workspacePhrases,...analyticsPhrases,...profilePhrases,...dashboardPhrases,...documentPhrases,...researchPhrases};
+for (const [source, vietnamese] of Object.entries(eventVietnamesePhrases)) {
+  const row = allPhrases[source] ? [...allPhrases[source]] : Array(8).fill(source);
+  row[5] = vietnamese;
+  allPhrases[source] = row;
+}
+
 export const translations = Object.fromEntries(languages.slice(1).map((locale, index) => [locale.code, Object.fromEntries(Object.entries(allPhrases).map(([source, values]) => [source, values[index]]))]));
 
 export function translate(language, source, values = {}) {

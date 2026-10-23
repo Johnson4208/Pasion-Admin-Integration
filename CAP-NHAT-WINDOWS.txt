@@ -1,0 +1,53 @@
+CẬP NHẬT PASION TRÊN WINDOWS — 23/10/2026
+
+Bản này gồm Event Scenarios mới, so sánh toàn nhóm xác suất, dữ liệu đối chiếu,
+và Vite 6.4.5. Không kèm xác suất thực đã kiểm định hoặc mô hình lịch sử thực.
+Các JSON trong tests/fixtures chỉ là dữ liệu kiểm thử tổng hợp.
+
+GIỮ TÀI KHOẢN VÀ DỮ LIỆU HIỆN TẠI
+1. Dừng ứng dụng bằng Ctrl+C.
+2. Sao lưu nguyên thư mục dự án đang dùng trước khi cập nhật.
+3. Giải nén ZIP này vào một thư mục tạm.
+4. Mở thư mục Pasion-Admin-Integration-scenarios có chứa package.json.
+   Chép nội dung thư mục này vào thư mục dự án bạn đang chạy, ví dụ
+   C:\Pasion-Admin-Integration-main. Cho phép thay thế các tệp mã nguồn trùng tên.
+   Giữ nguyên thư mục cũ; không xóa thư mục backend rồi thay cả thư mục.
+   ZIP không chứa các DB, .env, mail-config.json, .venv hoặc node_modules.
+   Chép các tệp mã nguồn không tự di chuyển dữ liệu từ một thư mục dự án khác.
+5. Trong terminal tại thư mục dự án đang dùng, chạy từng lệnh:
+
+npm.cmd ci
+npm.cmd run dev:full
+
+Nếu máy đã tạo .venv và cài thư viện thành công, không cần tạo lại Python.
+Tài khoản cũ thuộc backend/accounts.sqlite3 trong thư mục bạn từng dùng.
+Sau khi khởi động lại, phiên đăng nhập hiện tại có thể mất nhưng mật khẩu
+trong cùng DB không tự đổi. Không xóa DB để sửa lỗi mật khẩu.
+
+CÀI MỚI NẾU CHƯA CÓ MÔI TRƯỜNG PYTHON
+Cần Node.js LTS 22/24 và Python 3.12.
+Nếu py trỏ tới Python không tồn tại:
+winget install --exact --id Python.Python.3.12
+Sau đó đóng/mở lại terminal, kiểm tra: py -3.12 --version
+Trong thư mục có package.json, chạy từng lệnh và dừng nếu có lỗi:
+
+npm.cmd ci
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip --timeout 120 --retries 10 --disable-pip-version-check
+.\.venv\Scripts\python.exe -m pip install -r backend/requirements-documents.txt --timeout 120 --retries 10 --disable-pip-version-check
+npm.cmd run dev:full
+
+Không cần Administrator hoặc Activate.ps1.
+Giữ terminal mở. Trình duyệt: http://127.0.0.1:5173
+Demo mặc định (nếu chưa đổi): demo@solvai.com / SolvAI2024!
+Chỉ chạy một backend tại một thời điểm.
+
+XÁC SUẤT VÀ DỮ LIỆU ĐỐI CHIẾU
+- Mặc định: trạng thái cuối kỳ, các kết quả trong cùng nhóm cộng thành 100%.
+- Mọi kết quả được hiển thị cùng nhau khi có đủ mô hình và dữ liệu hợp lệ.
+- Nếu thiếu mô hình hoặc có một xác suất không hợp lệ, không hiển thị phân phối
+  thiếu kết quả và không gán bừa 50% hay xác suất bằng nhau.
+- Bộ thu thập dữ liệu ban đầu có World Bank, FRED và UCDP. Cần truy cập mạng.
+- Xem EVENT_OUTCOME_SOURCES.md và EVENT_PROBABILITIES.md trước khi xây mô hình.
+- Thu thập quan sát không tự chứng minh dữ liệu phù hợp để dự báo.
+- Các API mới hiện chưa được kiểm tra thành công trên cloud vì proxy HTTP 403.
