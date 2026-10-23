@@ -5,6 +5,13 @@ Bản này giữ Event Scenarios mới, so sánh toàn nhóm kết quả, nền 
 ZIP nguồn không chứa tài khoản, tài liệu riêng, khóa API hoặc môi trường cài sẵn.
 Chưa có mô hình xác suất thực đã được kiểm định; không tự sinh phần trăm giả.
 
+TIN TỨC THU THẬP VÀ DỮ LIỆU CŨ
+- Đã sửa nguồn Google News tiếng Việt và nhận diện tin về Hà Nội/TP.HCM.
+- Event Scenarios có bảng số tin tải về/bị lọc và kết quả từng nguồn.
+- Previously collected reporting mở kho Event Agent và Company News đã lưu.
+- Company News hiển thị lỗi kết nối riêng, không coi lỗi như kho có 0 bài.
+- 0 quan sát Outcome Data khác với 0 tin tức. Xem NEWS-COLLECTION.md.
+
 ĐỐI CHIẾU BA PHIÊN BẢN TRONG ZIP LỚN
 ZIP lớn bạn đã gửi chưa đọc được do giới hạn chuyển tệp 32 MiB.
 1. Giải nén bộ mã này. Mở thư mục có package.json và PREPARE-RECOVERY.cmd.

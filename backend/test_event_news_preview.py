@@ -65,4 +65,41 @@ class LiveEventTests(unittest.TestCase):
   path=next(s for s in result['dynamic_scenarios']['ranked_scenarios'] if s['id']=='moderate_deterioration')
   self.assertEqual(path['supporting_source_count'],1)
   self.assertGreater(path['evidence_score'],0)
+
+ def test_news_window_and_factor_are_passed_to_the_collectors(self):
+  with patch.object(e.event_feed_sources,'retrieve',return_value=([],{'feed_successes':1})) as collect:
+   result=e.analyze('Economy','GDP growth','Vietnam','90 days',self.now)
+  collect.assert_called_once_with(e._TOPICS['Economy']['GDP growth'][0],'Vietnam',factor='GDP growth',lookback_days=45)
+  self.assertEqual(result['horizon_info']['news_lookback_days'],45)
+
+ def test_repeated_headline_on_different_days_is_not_lost_as_a_duplicate(self):
+  rows=[self.story('Oil supply disruption threatens markets',1),self.story('Oil supply disruption threatens markets',2)]
+  with patch.object(e.event_feed_sources,'retrieve',return_value=(rows,{'feed_successes':1})):
+   result=e.analyze('Energy','Oil supply','Vietnam','30 days',self.now)
+  self.assertEqual(result['source_count'],2)
+  self.assertEqual(len({row['id'] for row in result['items']}),2)
+  self.assertEqual(result['filter_diagnostics']['duplicate'],0)
+
+ def test_word_order_preserves_distinct_reports(self):
+  rows=[self.story('Oil supply exceeds demand'),self.story('Oil demand exceeds supply')]
+  with patch.object(e.event_feed_sources,'retrieve',return_value=(rows,{'feed_successes':1})):
+   result=e.analyze('Energy','Oil supply','Vietnam','30 days',self.now)
+  self.assertEqual(result['source_count'],2)
+
+ def test_same_day_syndication_with_outlet_suffix_is_still_collapsed(self):
+  first=self.story('Oil supply disruption threatens markets - Outlet One',source='Outlet One')
+  second=self.story('Oil supply disruption threatens markets - Outlet Two',source='Outlet Two')
+  with patch.object(e.event_feed_sources,'retrieve',return_value=([first,second],{'feed_successes':1})):
+   result=e.analyze('Energy','Oil supply','Vietnam','30 days',self.now)
+  self.assertEqual(result['source_count'],1)
+  self.assertEqual(result['filter_diagnostics']['duplicate'],1)
+
+ def test_local_city_news_remains_visible_and_counts_as_regional_evidence(self):
+  row=self.story('unused')
+  row.update(title='Hà Nội tăng trưởng kinh tế mạnh',description='GDP tăng và sản xuất phục hồi')
+  with patch.object(e.event_feed_sources,'retrieve',return_value=([row],{'feed_successes':1})):
+   result=e.analyze('Economy','GDP growth','Vietnam','30 days',self.now)
+  self.assertEqual(result['source_count'],1)
+  self.assertEqual(result['scope_source_count'],1)
+  self.assertEqual(result['items'][0]['geographic_relation'],'DIRECT_SCOPE')
 if __name__=='__main__':unittest.main()

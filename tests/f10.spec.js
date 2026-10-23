@@ -303,3 +303,135 @@ test('collected retrospective observations do not automatically become validated
   await expect(page.getByRole('heading',{name:'Probability is not available'})).toBeVisible();
   await expect(page.getByRole('region',{name:'All scenario probabilities'})).toHaveCount(0);
 });
+
+test('collection diagnostics distinguish retrieved news, filtering, regional evidence and outcome observations',async({page}) => {
+  let archiveCalls=0;
+  await page.route('**/api/research/events/agent?*',r => {archiveCalls++;return r.fulfill({json:{status:'AGENT_NOT_INITIALIZED'}});});
+  await page.route('**/api/research/news',r => {archiveCalls++;return r.fulfill({json:{articles:[]}});});
+  const data={...report(),scope_source_count:0,
+    filter_diagnostics:{retrieved:120,accepted:20,stale:42,duplicate:31,off_topic:25,future:1,invalid:1},
+    coverage:{raw_results:120,requests:5,feed_successes:3,
+      feed_failures:[{provider:'GDELT DOC 2.0',reason:'NEWS_HTTP_429'},{provider:'Google News RSS',edition:'VN',reason:'NEWS_NETWORK_OR_PROVIDER_ERROR'}],
+      request_results:[{provider:'Google News RSS',edition:'US',status:'SUCCESS',returned_count:65},{provider:'GDELT DOC 2.0',status:'FAILED',returned_count:0}]},
+    outcome_history:{status:'NOT_COLLECTED',profiles:[{id:'vietnam-conflict',provider:'UCDP',frequency:'EVENT_INTERVAL',observation_count:0}]}};
+  await page.route('**/api/research/events/live?*',r => r.fulfill({json:data}));
+  await open(page);await analyze(page);
+  const status=page.getByRole('region',{name:'News collection status',exact:true});
+  await expect(status.locator('.ev-collection-counts dd')).toHaveText(['120','20','0']);
+  await expect(status).toContainText('Zero outcome observations does not mean no news was collected');
+  await status.getByText('Collection and filtering details',{exact:true}).click();
+  await expect(status.locator('.ev-collection-details dl dd')).toHaveText(['120','20','42','31','25','1','1']);
+  await expect(status).toContainText('Google News RSS · US');
+  await expect(status).toContainText('Provider returned HTTP 429');
+  await expect(status).toContainText('Provider could not be reached');
+  await expect(page.getByRole('complementary',{name:'Research context'})).toContainText('0 observations collected');
+  expect(archiveCalls).toBe(0);
+});
+
+test('stored collector reporting opens explicitly without promoting old scores or changing live counts',async({page}) => {
+  await page.route('**/api/research/events/live?*',r => r.fulfill({json:report()}));
+  const older=Array.from({length:13},(_,i) => ({id:'old-'+i,title:'Stored historical article '+(i+1),
+    url:'https://example.org/archive/'+i,source:'Saved publisher',published_at:'2020-04-01T00:00:00Z'}));
+  const version={id:7,created_at:'2020-04-02T00:00:00Z',snapshot:{...report(),items:older,
+    calibrated_probability:true,bayesian_forecast:{posterior:{first:.99,second:.01}}}};
+  await page.route('**/api/research/events/agent?*',r => r.fulfill({json:{status:'TRACKING',latest:version,versions:[version],
+    last_poll:{checked_at:'2020-04-02T00:00:00Z',status:'NEW_REVISION'}}}));
+  await page.route('**/api/research/news',r => r.fulfill({json:{articles:[{id:'broader',title:'A stored company filing about another topic',provider:'Permitted publisher',url:'https://example.org/company',published_at:'2021-01-01T00:00:00Z'}]}}));
+  await open(page);await analyze(page);
+  const archive=page.getByRole('region',{name:'Previously collected reporting',exact:true});
+  await expect(archive.getByText('Stored historical article 1',{exact:true})).toHaveCount(0);
+  await archive.getByRole('button',{name:'Read collector archive',exact:true}).click();
+  await expect(archive).toContainText('13 stored articles available');
+  await expect(archive.getByRole('link',{name:'Stored historical article 1 ↗',exact:true})).toHaveAttribute('href','https://example.org/archive/0');
+  await expect(archive).toContainText('2020');
+  await expect(archive.getByText('Stored historical article 13',{exact:true})).toHaveCount(0);
+  await archive.getByRole('button',{name:/Show more collected articles/}).click();
+  await expect(archive.getByRole('link',{name:'Stored historical article 13 ↗',exact:true})).toBeVisible();
+  await archive.getByRole('button',{name:'Read Company News library',exact:true}).click();
+  await expect(archive.getByRole('link',{name:'A stored company filing about another topic ↗'})).toBeVisible();
+  await expect(archive).toContainText('across broader topics');
+  await expect(page.locator('.ev-score strong')).toHaveText('+40');
+  await expect(page.getByRole('region',{name:'News collection status',exact:true}).locator('.ev-collection-counts dd')).toHaveText(['Not recorded','20','20']);
+  await expect(page.getByRole('region',{name:'All scenario probabilities'})).toHaveCount(0);
+  await expect(archive).not.toContainText('99.0%');
+});
+
+test('stored reporting remains accessible when all live feeds fail and failure counts stay separate',async({page}) => {
+  let attempts=0;
+  await page.route('**/api/research/events/live?*',r => {
+    attempts++;
+    return attempts === 1 ? r.fulfill({json:report()}) : r.fulfill({status:503,json:{coverage:{raw_results:0,requests:5,feed_successes:0,
+      feed_failures:[{provider:'Google News RSS',reason:'NEWS_HTTP_403'}],request_results:[{provider:'Google News RSS',status:'FAILED',returned_count:0}]}}});
+  });
+  await page.route('**/api/research/news',r => r.fulfill({json:{articles:[{id:'stored',title:'Reporting saved before the outage',url:'https://example.org/stored'}]}}));
+  await open(page);await analyze(page);
+  await page.getByRole('button',{name:'Analyze evidence',exact:true}).click();
+  const failure=page.getByRole('region',{name:'Latest failed news search',exact:true});
+  await expect(failure).toContainText('Provider returned HTTP 403');
+  await expect(failure).toContainText('0 / 5');
+  await expect(page.getByRole('region',{name:'News collection status',exact:true}).locator('.ev-collection-counts dd')).toHaveText(['Not recorded','20','20']);
+  const archive=page.getByRole('region',{name:'Previously collected reporting',exact:true});
+  await archive.getByRole('button',{name:'Read Company News library',exact:true}).click();
+  await expect(archive.getByRole('link',{name:'Reporting saved before the outage ↗'})).toBeVisible();
+  await page.reload();
+  await page.getByRole('button',{name:'Analyze evidence',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Latest failed news search',exact:true})).toContainText('Provider returned HTTP 403');
+  await page.getByRole('region',{name:'Previously collected reporting',exact:true}).getByRole('button',{name:'Read Company News library',exact:true}).click();
+  await expect(page.getByRole('link',{name:'Reporting saved before the outage ↗'})).toBeVisible();
+});
+
+test('changing the research context cancels an old archive request instead of relabeling its articles',async({page}) => {
+  let release,started=false,finished=false;
+  const gate=new Promise(resolve => {release=resolve;});
+  await page.route('**/api/research/events/agent?*',async r => {
+    const q=Object.fromEntries(new URL(r.request().url()).searchParams);
+    if(q.focus==='Vietnam') {started=true;await gate;}
+    const version={id:1,created_at:'2020-01-01T00:00:00Z',snapshot:{...report(q),items:[{id:q.focus,title:q.focus+' stored reporting',url:'https://example.org/'+q.focus}]}};
+    await r.fulfill({json:{status:'TRACKING',latest:version,versions:[version]}}).catch(()=>{});
+    if(q.focus==='Vietnam')finished=true;
+  });
+  await open(page);
+  await page.getByRole('button',{name:'Read collector archive',exact:true}).click();
+  await expect.poll(()=>started).toBe(true);
+  await page.getByLabel('Region / entity',{exact:true}).fill('Japan');
+  await page.getByRole('button',{name:'Read collector archive',exact:true}).click();
+  await expect(page.getByRole('link',{name:'Japan stored reporting ↗'})).toBeVisible();
+  release();
+  await expect.poll(()=>finished).toBe(true);
+  await expect(page.getByText('Vietnam stored reporting',{exact:true})).toHaveCount(0);
+  await expect(page.getByRole('region',{name:'Previously collected reporting',exact:true})).toContainText('Archive articles retain their dates');
+});
+
+test('archive states distinguish missing data, missing watch, sign-in failure and an empty broader library',async({page}) => {
+  let reads=0;
+  await page.route('**/api/research/events/agent?*',r => {
+    reads++;
+    return reads===3 ? r.fulfill({status:401,json:{message:'Authentication required'}}) : r.fulfill({json:{status:reads===1?'AGENT_NOT_INITIALIZED':'WATCH_NOT_CONFIGURED',latest:null,versions:[]}});
+  });
+  await page.route('**/api/research/news',r => r.fulfill({json:{articles:[]}}));
+  await open(page);
+  const archive=page.getByRole('region',{name:'Previously collected reporting',exact:true});
+  await archive.getByRole('button',{name:'Read collector archive',exact:true}).click();
+  await expect(archive).toContainText('No collector archive is available in this version.');
+  await archive.getByRole('button',{name:'Read collector archive',exact:true}).click();
+  await expect(archive).toContainText('no saved watch for this exact factor, region and horizon');
+  await archive.getByRole('button',{name:'Read collector archive',exact:true}).click();
+  await expect(archive.getByRole('alert')).toHaveText('Sign in again to read previously collected reporting.');
+  await archive.getByRole('button',{name:'Read Company News library',exact:true}).click();
+  await expect(archive).toContainText('No stored articles were found here.');
+  await expect(archive).toContainText('recover its data before checking again');
+});
+
+test('Vietnamese mobile collection diagnostics keep unknown counts distinct from zero',async({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await page.route('**/api/research/events/live?*',r => r.fulfill({json:report()}));
+  await open(page);
+  await page.getByRole('combobox',{name:'Language',exact:true}).first().selectOption('vi');
+  await page.getByRole('button',{name:'Phân tích bằng chứng',exact:true}).click();
+  const status=page.getByRole('region',{name:'Trạng thái thu thập tin tức',exact:true});
+  await expect(status.locator('.ev-collection-counts dd')).toHaveText(['Chưa được ghi nhận','20','20']);
+  await status.getByText('Chi tiết thu thập và lọc tin',{exact:true}).click();
+  await expect(status.locator('.ev-collection-details dl dd')).toHaveText(Array(7).fill('Chưa được ghi nhận'));
+  await expect(page.getByRole('button',{name:'Mở kho tin của bộ thu thập',exact:true})).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});

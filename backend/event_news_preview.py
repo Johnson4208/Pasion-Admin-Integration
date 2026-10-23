@@ -61,7 +61,10 @@ _lock=threading.RLock()
 _cache={}
 _TTL=900
 
-class Unavailable(Exception):pass
+class Unavailable(Exception):
+ def __init__(self,reason,coverage=None):
+  super().__init__(reason)
+  self.coverage=coverage
 
 def _clean(s):return re.sub(r'\s+',' ',re.sub(r'<[^>]+>',' ',html.unescape(s or ''))).strip()[:400]
 def _tokens(s):return set(re.findall(r'[a-z0-9]+',s.casefold()))
@@ -126,12 +129,15 @@ def analyze(category,factor,focus='',horizon='30 days',now=None,basis='END_STATE
   saved=_cache.get(key)
   if saved and time.monotonic()-saved[0]<_TTL:return _with_forecast(saved[1],basis,now)
  terms,_=_TOPICS[category][factor]
- try:rows,coverage=event_feed_sources.retrieve(terms,focus)
+ try:rows,coverage=event_feed_sources.retrieve(terms,focus,factor=factor,lookback_days=lookback)
  except event_feed_sources.FeedError as exc:
   # A reviewed historical baseline does not depend on today's news transport.
   forecast=event_forecasts.forecast(category,factor,focus,horizon,basis,now)
-  if forecast['status']!='REFERENCE_ESTIMATE_AVAILABLE':raise Unavailable(str(exc)) from exc
-  rows,coverage=[],{'feed_successes':0,'requests':None,'status':'UNAVAILABLE','reason_code':str(exc)}
+  if forecast['status']!='REFERENCE_ESTIMATE_AVAILABLE':
+   raise Unavailable(str(exc),coverage=getattr(exc,'coverage',None)) from exc
+  rows=[]
+  coverage={**(getattr(exc,'coverage',None) or {}),'feed_successes':0,'status':'UNAVAILABLE','reason_code':str(exc)}
+  coverage.setdefault('requests',None)
  seen=set();items=[];age_limit=lookback
  diagnostics={'retrieved':len(rows),'stale':0,'duplicate':0,'off_topic':0,'accepted':0,'future':0,'invalid':0}
  for row in sorted(rows,key=lambda r:(str(r.get('published_at','')),str(r.get('title','')),str(r.get('source',''))),reverse=True):
@@ -144,9 +150,13 @@ def analyze(category,factor,focus='',horizon='30 days',now=None,basis='END_STATE
    diagnostics['future']+=1;continue
   if age>age_limit:
    diagnostics['stale']+=1;continue
-  # Source title and normalized headline are a rough story cluster.
-  tokens=sorted(event_topic_matcher.tokens(row['title'])-event_topic_matcher.tokens(row['source']))
-  group=hashlib.sha256((' '.join(tokens)).encode()).hexdigest()[:16]
+  # Preserve word order and dated episodes. Repeated headlines on a later day
+  # are separate reports; syndication of the same daily headline is one cluster.
+  title=event_topic_matcher.normalize(row['title'])
+  publisher=event_topic_matcher.normalize(row['source'])
+  if publisher and title.endswith(' '+publisher):title=title[:-len(publisher)].strip()
+  identity=title+'|'+t.astimezone(timezone.utc).date().isoformat()
+  group=hashlib.sha256(identity.encode()).hexdigest()[:16]
   if group in seen:
    diagnostics['duplicate']+=1;continue
   match=event_topic_matcher.inspect(row.get('title'),row.get('description'),factor,terms)
@@ -182,7 +192,8 @@ def analyze(category,factor,focus='',horizon='30 days',now=None,basis='END_STATE
   'bayesian_forecast':event_bayesian.unavailable(),'calibrated_probability':False,
   'dynamic_scenarios':event_scenario_board.candidates(items,factor,focus,horizon),
   'evidence_sufficiency':'SINGLE_SOURCE_LOW' if len(items)==1 else 'MULTI_STORY_UNVERIFIED' if items else 'NO_EVIDENCE',
-  'model':{'name':'reported-event-evidence-v3','direction_method':event_direction.VERSION,
+  'model':{'name':'reported-event-evidence-v4','direction_method':event_direction.VERSION,
+   'cluster_method':'ordered-headline-utc-day-v1',
    'components':['dated public reporting','topic and geographic relevance','conservative reported direction','supporting and opposing stories'],
    'calibrated_probability':False,'label':'Evidence balance',
    'warning':'Reported evidence is not an event probability. Forecast horizon is research context, not a validated time-to-event model.'},

@@ -16,9 +16,12 @@ from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError,URLError
 from urllib.parse import urlencode,urlsplit
 from urllib.request import HTTPRedirectHandler,Request,build_opener
+from event_topic_matcher import normalize
+from event_news_queries import COUNTRY_TERMS, REGION_COUNTRIES, REGION_TERMS, VIETNAMESE_TOPICS
 
-# One user's search fans out to at most 6 fixed provider requests.
+# Four Google editions, GDELT, and at most one factor-specific provider job.
 MAX_RESP=1_300_000
+_VIETNAM_QUERY='(Vietnam OR "Viet Nam" OR "Việt Nam" OR Hanoi OR "Hà Nội" OR "Ho Chi Minh City" OR "TP.HCM")'
 _REGION_ALIASES={
  "world":("World","",None), "global":("World","",None),
  "worldwide":("World","",None), "international":("World","",None),
@@ -27,9 +30,9 @@ _REGION_ALIASES={
  "asian":("Asia","(Asia OR Asian OR ASEAN OR Southeast Asia)",None),
  "southeast asia":("Southeast Asia","(ASEAN OR Southeast Asia OR Vietnam OR Thailand OR Indonesia OR Malaysia)",None),
  "asean":("Southeast Asia","(ASEAN OR Southeast Asia OR Vietnam OR Thailand OR Indonesia OR Malaysia)",None),
- "vietnam":("Vietnam","(Vietnam OR Viet Nam OR Việt Nam)", "VN"),
- "viet nam":("Vietnam","(Vietnam OR Viet Nam OR Việt Nam)","VN"),
- "việt nam":("Vietnam","(Vietnam OR Viet Nam OR Việt Nam)","VN"),
+ "vietnam":("Vietnam",_VIETNAM_QUERY, "VN"),
+ "viet nam":("Vietnam",_VIETNAM_QUERY,"VN"),
+ "việt nam":("Vietnam",_VIETNAM_QUERY,"VN"),
  "us":("United States","(US OR USA OR United States)", "US"),
  "usa":("United States","(US OR USA OR United States)", "US"),
  "united states":("United States","(US OR USA OR United States)", "US"),
@@ -41,12 +44,19 @@ _REGION_ALIASES={
  "latin america":("Latin America","(Latin America OR South America OR Brazil OR Mexico)",None)
 }
 
-class FeedError(Exception):pass
+class FeedError(Exception):
+ def __init__(self,reason,coverage=None):
+  super().__init__(reason)
+  self.coverage=coverage
 class NoRedirect(HTTPRedirectHandler):
  def redirect_request(self,req,fp,code,msg,headers,newurl):
   return None
 
 _OPENER=build_opener(NoRedirect())
+_SCOPE_ALIASES=dict(COUNTRY_TERMS)
+for _area,_countries in REGION_COUNTRIES.items():
+ _SCOPE_ALIASES[_area]=tuple(REGION_TERMS[_area])+tuple(term for country in _countries for term in COUNTRY_TERMS[country])
+_ALL_SCOPE_TERMS=frozenset(term for terms in _SCOPE_ALIASES.values() for term in terms)
 
 def geography(value):
  if not isinstance(value,str) or len(value)>120 or any(ch in value for ch in '\r\n\x00'):
@@ -55,6 +65,13 @@ def geography(value):
  if not clean:return ("World","",None)
  alias=_REGION_ALIASES.get(clean.casefold())
  if alias:return alias
+ # Canonical names/demonyms share the same query and scope aliases. City
+ # mentions are used to classify articles, never to widen a city-only focus.
+ normalized=normalize(clean)
+ for country,mentions in COUNTRY_TERMS.items():
+  country_forms=mentions[:3] if country=='Vietnam' else mentions[:4] if country=='United States' else mentions
+  if normalized==normalize(country) or normalized in country_forms:
+   return (country,'"'+country+'"',None)
  # Free-text search is supported but bounded. It cannot become URL or GDELT syntax.
  if not re.fullmatch(r"[\w\s.\-']{1,70}",clean,re.UNICODE):
   raise ValueError('Invalid focus query')
@@ -72,9 +89,11 @@ def _get(url,accept):
  req=Request(url,headers={'User-Agent':'Pasion-Research/1.1 (public news search)','Accept':accept})
  try:
   with _OPENER.open(req,timeout=7) as response:
-   if response.status!=200:raise FeedError("NEWS_HTTP_ERROR")
+   if response.status!=200:raise FeedError(f'NEWS_HTTP_{response.status}' if type(response.status) is int and 100<=response.status<=599 else 'NEWS_HTTP_ERROR')
    raw=response.read(MAX_RESP+1)
- except (OSError,URLError,HTTPError,TimeoutError) as exc:
+ except HTTPError as exc:
+  raise FeedError(f'NEWS_HTTP_{exc.code}' if type(exc.code) is int and 100<=exc.code<=599 else 'NEWS_HTTP_ERROR') from exc
+ except (OSError,URLError,TimeoutError) as exc:
   raise FeedError("NEWS_NETWORK_OR_PROVIDER_ERROR") from exc
  if len(raw)>MAX_RESP:raise FeedError("NEWS_RESPONSE_TOO_LARGE")
  return raw
@@ -97,10 +116,16 @@ def _rss(query,edition):
     'time_basis':'PUBLISHED','edition':gl})
  return result
 
-def _gdelt(query):
+def _lookback(value):
+ if type(value) is not int or not 1<=value<=90:
+  raise ValueError('News lookback must be an integer from 1 to 90 days')
+ return value
+
+def _gdelt(query,lookback_days=30):
+ lookback_days=_lookback(lookback_days)
  # GDELT may reject, throttle, or temporarily return HTML; treat as optional.
  url="https://api.gdeltproject.org/api/v2/doc/doc?"+urlencode({'query':query,'mode':'artlist',
-     'format':'json','sort':'datedesc','maxrecords':50,'timespan':'30d'})
+     'format':'json','sort':'datedesc','maxrecords':50,'timespan':f'{lookback_days}d'})
  try:data=json.loads(_get(url,'application/json'))
  except (ValueError,UnicodeError) as exc:raise FeedError("GDELT_INVALID_JSON") from exc
  now=datetime.now(timezone.utc)
@@ -122,13 +147,16 @@ def _gdelt(query):
     'description':'','provider':'GDELT DOC 2.0','time_basis':'FIRST_SEEN','edition':article.get('language') or 'global'})
  return result
 
-def _variants(topic_terms,focus,location):
+def _variants(topic_terms,focus,location,*,factor=None,lookback_days=30):
+ lookback_days=_lookback(lookback_days)
+ if factor is not None and factor not in VIETNAMESE_TOPICS:
+  raise ValueError('Unsupported news factor')
  if 'shipping trade route supply disruption' in topic_terms and location[0]=='Vietnam':
   return [
-   ('("port congestion" OR "shipping delays" OR "Gemalink" OR "Cat Lai") Vietnam when:30d',('en-US','US','US:en')),
-   ('("vessel delays" OR "port congestion" OR "Vietnam ports") Vietnam when:30d',('en-GB','GB','GB:en')),
-   ('("ùn tắc cảng" OR "tàu chờ cảng" OR "chậm thông quan") Việt Nam when:30d',('vi-VN','VN','VN:vi')),
-   ('("Cát Lái" OR "Cái Mép" OR "Gemalink") (ùn tắc OR trễ tàu OR chậm) when:30d',('vi-VN','VN','VN:vi'))]
+   (f'("port congestion" OR "shipping delays" OR "Gemalink" OR "Cat Lai") Vietnam when:{lookback_days}d',('en-US','US','US:en')),
+   (f'("vessel delays" OR "port congestion" OR "Vietnam ports") Vietnam when:{lookback_days}d',('en-GB','GB','GB:en')),
+   (f'("ùn tắc cảng" OR "tàu chờ cảng" OR "chậm thông quan") Việt Nam when:{lookback_days}d',('vi','VN','VN:vi')),
+   (f'("Cát Lái" OR "Cái Mép" OR "Gemalink") (ùn tắc OR trễ tàu OR chậm) when:{lookback_days}d',('vi','VN','VN:vi'))]
 
  # Do not require every word of a long keyword sequence to appear in one article.
  all_terms=[w for w in re.findall(r"[A-Za-z][A-Za-z-]*",topic_terms) if len(w)>2]
@@ -142,10 +170,14 @@ def _variants(topic_terms,focus,location):
  if location[0]=='World':
   local_query=topic
   fallback=' '.join(all_terms[:3])
- return [(local_query,('en-US','US','US:en')),
-         (fallback,('en-GB','GB','GB:en')),
-         ((topic+' '+geographical).strip(),('en-SG','SG','SG:en')),
-         ((topic+' '+geographical).strip(),('vi-VN','VN','VN:vi'))]
+ vietnamese_topic='('+' OR '.join('"'+phrase+'"' for phrase in VIETNAMESE_TOPICS[factor])+')' if factor else topic
+ local_vietnamese=(vietnamese_topic+' '+geographical).strip()
+ return [(local_query+f' when:{lookback_days}d',('en-US','US','US:en')),
+         (fallback+f' when:{lookback_days}d',('en-GB','GB','GB:en')),
+         ((topic+' '+geographical).strip()+f' when:{lookback_days}d',('en-SG','SG','SG:en')),
+         # Google redirects hl=vi-VN to hl=vi. Use the canonical endpoint
+         # because arbitrary provider redirects are deliberately disabled.
+         (local_vietnamese+f' when:{lookback_days}d',('vi','VN','VN:vi'))]
 
 def _fed_official():
  # A directly published Federal Reserve RSS channel; unlike aggregators, provenance
@@ -190,12 +222,12 @@ def _port_report_vietnam():
  # Reports dated on Tuesdays; attempt current and preceding two Tuesdays.
  offset=(now.weekday()-1)%7
  tuesday=(now-timedelta(days=offset)).date()
- results=[]
+ results=[];reached=False
  for weeks in (0,1,2):
   report_day=tuesday-timedelta(days=7*weeks)
   if (now.date()-report_day).days>30:continue
   link='https://mykn.kuehne-nagel.com/news/article/port-operational-updates-from-'+report_day.strftime('%d-%m-%Y')
-  try:payload=_get(link,'text/html')
+  try:payload=_get(link,'text/html');reached=True
   except FeedError:continue
   parser=_PlainText()
   try:parser.feed(payload.decode('utf-8','replace'))
@@ -215,68 +247,76 @@ def _port_report_vietnam():
    'published_at':datetime.combine(report_day,datetime.min.time(),tzinfo=timezone.utc).isoformat(),
    'provider':'Kuehne+Nagel public port operations','time_basis':'REPORT_DATE',
    'source_tier':'INDUSTRY_OPERATOR_UNVERIFIED'})
+ if not reached:raise FeedError('PORT_REPORTS_UNAVAILABLE')
  return results
 
-def retrieve(topic_terms,focus):
+def retrieve(topic_terms,focus,*,factor=None,lookback_days=30):
+ lookback_days=_lookback(lookback_days)
  region=geography(focus)
- jobs=[('Google News RSS',query,edition) for query,edition in _variants(topic_terms,focus,region)]
+ jobs=[('Google News RSS',query,edition) for query,edition in _variants(topic_terms,focus,region,factor=factor,lookback_days=lookback_days)]
  gdeltquery=('"shipping disruption" Vietnam' if 'shipping trade route supply disruption' in topic_terms and region[0]=='Vietnam' else ' '.join(re.findall(r"[A-Za-z]+",topic_terms)[:2])+' '+region[1]).strip()
  jobs.append(('GDELT DOC 2.0',gdeltquery,None))
  if region[0]=='Vietnam' and 'shipping trade route supply disruption' in topic_terms:
   jobs.append(('Kuehne+Nagel public port operations','',None))
  if any(word in topic_terms.lower() for word in ('central bank','interest rates','inflation','credit conditions','mortgage rates','monetary policy')):
   jobs.append(('Federal Reserve official RSS','',None))
- results=[];failed=[];succeeded=0
+ results=[];failed=[];succeeded=0;request_results=[]
  def job(spec):
   name,q,edition=spec
-  try:return name,(_port_report_vietnam() if name=='Kuehne+Nagel public port operations' else _fed_official() if name=='Federal Reserve official RSS' else _gdelt(q) if edition is None else _rss(q,edition)),None
-  except (FeedError,ValueError,TypeError,KeyError) as e:return name,[],getattr(e,'args',['PROVIDER_ERROR'])[0]
+  try:return name,edition,(_port_report_vietnam() if name=='Kuehne+Nagel public port operations' else _fed_official() if name=='Federal Reserve official RSS' else _gdelt(q,lookback_days=lookback_days) if edition is None else _rss(q,edition)),None
+  except (FeedError,ValueError,TypeError,KeyError) as e:
+   reason=str(e.args[0]) if e.args else 'PROVIDER_ERROR'
+   # Do not expose arbitrary provider responses, request URLs or user data.
+   if not re.fullmatch(r'[A-Z][A-Z0-9_]{0,79}',reason):reason='PROVIDER_RESPONSE_ERROR'
+   return name,edition,[],reason
  with concurrent.futures.ThreadPoolExecutor(max_workers=7) as pool:
   futures=[pool.submit(job,s) for s in jobs]
   for future in concurrent.futures.as_completed(futures):
-   name,items,issue=future.result()
-   if issue:failed.append({'provider':name,'reason':str(issue)[:80]})
+   name,edition,items,issue=future.result()
+   diagnostic={'provider':name,'edition':edition[1] if edition else 'US' if name=='Federal Reserve official RSS' else 'VN' if name=='Kuehne+Nagel public port operations' else 'global',
+               'status':'FAILED' if issue else 'SUCCESS','returned_count':len(items)}
+   if issue:diagnostic['reason']=issue
+   request_results.append(diagnostic)
+   if issue:failed.append({'provider':name,'reason':issue})
    else:succeeded+=1;results.extend(items)
- if succeeded==0:raise FeedError("ALL_NEWS_FEEDS_UNAVAILABLE")
  # No claim of source independence: providers can syndicate the same article.
- return results,{'region':region[0],'scope_query':region[1],'requests':len(jobs),
+ coverage={'region':region[0],'scope_query':region[1],'requests':len(jobs),'lookback_days':lookback_days,
    'feed_successes':succeeded,'feed_failures':failed,'raw_results':len(results),
-   'providers':sorted({r['provider'] for r in results})}
+   'providers':sorted({r['provider'] for r in results}),
+   'request_results':sorted(request_results,key=lambda entry:(entry['provider'],entry['edition']))}
+ if succeeded==0:raise FeedError('ALL_NEWS_FEEDS_UNAVAILABLE',coverage)
+ return results,coverage
 
 
 def scope_relation(title, description, focus, source=''):
  """Keep international context visible without treating it as local evidence."""
- from event_topic_matcher import normalize
  region=geography(focus)[0]
  if region=='World':return 'GLOBAL_SCOPE'
- aliases={
-  'Vietnam':('vietnam','viet nam','vietnamese'),
-  'United States':('united states','usa','u s','american','federal reserve'),
-  'Asia':('asia','asian','asean','vietnam','viet nam','china','japan','korea','india','taiwan','singapore','thailand','indonesia','malaysia'),
-  'Southeast Asia':('asean','southeast asia','vietnam','viet nam','singapore','thailand','indonesia','malaysia','philippines','cambodia','laos','myanmar'),
-  'Europe':('europe','european','eurozone','germany','france','italy','spain','united kingdom','britain'),
-  'Middle East':('middle east','gulf','israel','iran','saudi','iraq'),
-  'Africa':('africa','african'),
-  'Latin America':('latin america','south america','brazil','mexico'),
- }
  # RSS often appends the outlet to BOTH headline and snippet. An Iran story
  # published by "Vietnam.vn" is not evidence about Vietnam.
  publisher=normalize(source)
  def article_text(value):
-  text=normalize(value)
+  raw=str(value or '')
+  if source:
+   raw=re.sub(r'\s*[-–—|:]?\s*'+re.escape(str(source))+r'\s*$','',raw,flags=re.I)
+   raw=re.sub(r'^\s*'+re.escape(str(source))+r'\s*[-–—|:]\s*','',raw,flags=re.I)
+  text=normalize(raw)
+  # Preserve the normalized-suffix safeguard for punctuation/HTML variants.
   if publisher and (text==publisher or text.endswith(' '+publisher)):
    text=text[:-len(publisher)].strip()
-  return text
- content=article_text(title)+' '+article_text(description)
- without_publisher=re.sub(r'\s*[-–—|]\s*'+re.escape(str(source))+r'\s*$','',str(title or '')) if source else str(title or '')
- us_abbreviation=bool(re.search(r'\b(?:US|U\.S\.?)(?=\s|[,:;]|$)',without_publisher+' '+str(description or '')))
+  return text,raw
+ headline,raw_title=article_text(title)
+ snippet,raw_description=article_text(description)
+ content=headline+' '+snippet
+ padded=' '+content+' '
+ def mentioned(term):return ' '+term+' ' in padded
+ us_abbreviation=bool(re.search(r'\b(?:US|U\.S\.?)(?=\s|[,:;]|$)',raw_title+' '+raw_description))
  if region=='United States' and us_abbreviation:return 'DIRECT_SCOPE'
- for term in aliases.get(region,(normalize(region),)):
-  if re.search(r'\b'+re.escape(term)+r'\b',content):return 'DIRECT_SCOPE'
+ for term in _SCOPE_ALIASES.get(region,(normalize(region),)):
+  if mentioned(term):return 'DIRECT_SCOPE'
  # An official source's place of publication alone does not prove the
  # article concerns that place, but Fed-only reporting is external to Vietnam.
  if region!='United States' and 'federal reserve' in normalize(source):return 'EXTERNAL_CONTEXT'
  if us_abbreviation:return 'EXTERNAL_CONTEXT'
- foreign={term for area,terms in aliases.items() if area!=region for term in terms}
- if any(re.search(r'\b'+re.escape(term)+r'\b',content) for term in foreign):return 'EXTERNAL_CONTEXT'
+ if any(mentioned(term) for term in _ALL_SCOPE_TERMS):return 'EXTERNAL_CONTEXT'
  return 'UNVERIFIED_SCOPE'

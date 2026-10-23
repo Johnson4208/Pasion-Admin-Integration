@@ -113,6 +113,13 @@ saving it as a new analysis. Save report stores the complete snapshot in this
 browser. Open it from Saved research to inspect its sources or export JSON;
 local storage is not a server backup.
 
+The source collection panel shows retrieved, filtered, accepted and regional counts,
+plus individual provider results. Previously collected Event Agent snapshots and
+the Company News library can be opened separately without treating archived articles
+as fresh evidence. Company News distinguishes loading, request errors and empty
+storage. See [NEWS-COLLECTION.md](NEWS-COLLECTION.md) for the three backend stores,
+the Vietnamese feed fix, local-data recovery and optional background collection.
+
 Public retrieval needs HTTPS access to `news.google.com` and
 `api.gdeltproject.org`, plus `www.federalreserve.gov` for monetary topics and
 `mykn.kuehne-nagel.com` for Vietnam port reports. Missing feeds are reported as

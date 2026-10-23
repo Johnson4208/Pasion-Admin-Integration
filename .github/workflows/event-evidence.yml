@@ -7,11 +7,15 @@ on:
       - 'backend/test_event*.py'
       - 'src/EventScenarios.jsx'
       - 'src/EventScenarioComparison.jsx'
+      - 'src/EventSourceStatus.jsx'
+      - 'src/CompanyNews.jsx'
+      - 'src/company-news.scss'
       - 'src/eventScenarios.js'
       - 'src/event-scenarios.scss'
       - 'src/translations*.js'
       - 'src/HomePage.jsx'
       - 'tests/f10.spec.js'
+      - 'tests/news-collection.spec.js'
       - 'tests/fixtures/event-*.json'
       - 'unit/eventScenarios.test.js'
       - 'playwright.config.js'
@@ -22,11 +26,15 @@ on:
       - 'backend/test_event*.py'
       - 'src/EventScenarios.jsx'
       - 'src/EventScenarioComparison.jsx'
+      - 'src/EventSourceStatus.jsx'
+      - 'src/CompanyNews.jsx'
+      - 'src/company-news.scss'
       - 'src/eventScenarios.js'
       - 'src/event-scenarios.scss'
       - 'src/translations*.js'
       - 'src/HomePage.jsx'
       - 'tests/f10.spec.js'
+      - 'tests/news-collection.spec.js'
       - 'tests/fixtures/event-*.json'
       - 'unit/eventScenarios.test.js'
       - 'playwright.config.js'
@@ -51,4 +59,4 @@ jobs:
       - name: Install browser for Event UI regression tests
         run: npx playwright install --with-deps chromium
       - name: Verify Event research interactions
-        run: npm run test:ui -- tests/f10.spec.js
+        run: npm run test:ui -- tests/f10.spec.js tests/news-collection.spec.js

@@ -857,7 +857,8 @@ class Handler(BaseHTTPRequestHandler):
                 result=event_news_preview.analyze(q.get('category',[''])[0],q.get('factor',[''])[0],q.get('focus',[''])[0],q.get('horizon',['30 days'])[0],basis=q.get('basis',['END_STATE'])[0])
                 self.respond(200,result)
             except ValueError:self.respond(400,{'message':'Unsupported event research configuration.'})
-            except event_news_preview.Unavailable as exc:self.respond(503,{'status':'UNAVAILABLE','reason_code':str(exc),'items':[],'outcomes':[]})
+            except event_news_preview.Unavailable as exc:self.respond(503,{'status':'UNAVAILABLE','reason_code':str(exc),'items':[],'outcomes':[],
+                                                                          'coverage':getattr(exc,'coverage',None)})
             return
         if address in ('/api/research/events','/api/research/events/evidence'):
             self.event_api();return

@@ -53,6 +53,20 @@ class EventApiTests(unittest.TestCase):
         self.assertEqual(status,503)
         self.assertEqual(result['items'],[])
 
+    def test_failed_feed_diagnostics_survive_the_api_without_a_fake_report(self):
+        coverage={'requests':5,'feed_successes':0,'raw_results':0,
+                  'feed_failures':[{'provider':'Google News RSS','reason':'NEWS_HTTP_429'}],
+                  'request_results':[{'provider':'Google News RSS','edition':'VN','status':'FAILED','returned_count':0,'reason':'NEWS_HTTP_429'}]}
+        failure=event_news_preview.event_feed_sources.FeedError('ALL_NEWS_FEEDS_UNAVAILABLE')
+        failure.coverage=coverage
+        with event_news_preview._lock:event_news_preview._cache.clear()
+        with patch.object(event_news_preview.event_feed_sources,'retrieve',side_effect=failure):
+            status,result=self.call('GET','/api/research/events/live?'+urlencode({'category':'Economy','factor':'GDP growth','focus':'Vietnam','horizon':'30 days'}))
+        self.assertEqual(status,503)
+        self.assertEqual(result['coverage'],coverage)
+        self.assertEqual(result['items'],[])
+        self.assertNotIn('dynamic_scenarios',result)
+
     def test_complete_reference_family_is_available_even_if_news_transport_is_down(self):
         spec=specification()
         model=event_forecasts.build(spec,'automated synthetic fixture',NOW)
