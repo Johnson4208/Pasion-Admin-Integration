@@ -1,7 +1,7 @@
 name: Event evidence checks
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/event-scenarios-update-20261023']
     paths:
       - 'backend/event_*.py'
       - 'backend/test_event*.py'
