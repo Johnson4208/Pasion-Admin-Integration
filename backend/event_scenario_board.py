@@ -7,6 +7,7 @@ metadata/snippets. No unsourced economic facts or expert conclusions are added.
 import math
 import re
 import event_horizons
+import event_experimental_probability
 
 VERSION="scenario-board-v2"
 
@@ -100,19 +101,29 @@ def candidates(items,factor,focus,horizon):
   measured=fits and total>0 and (counts['SUPPORTS']+counts['CHALLENGES']>0)
   balance=round((support-opposition)/total,4) if measured else None
   status=('OUTSIDE_HORIZON' if not fits else 'EVIDENCE_SCORED' if measured else 'PENDING_EVIDENCE')
+  # Experimental percentages are separate from verified, retrospective models.
+  # Only in-scope directional evidence can move an explicit assumption-based prior.
+  # Include CHALLENGES as well as SUPPORTS so contradictory news lowers the estimate.
+  model_sources=[source for source in sources if source['evidence_role'] in ('SUPPORTS','CHALLENGES')
+                 and source.get('direction_status')=='DIRECTIONAL'
+                 and source.get('geographic_relation') not in ('EXTERNAL_CONTEXT','UNVERIFIED_SCOPE')]
+  experimental=(event_experimental_probability.estimate(model_sources,target,ident)
+                if measured and model_sources else None)
   scored.append({'id':ident,'title':name,'definition':description,'factor':factor,'focus':focus or 'World',
    'temporal_fit':info['timeframe'],'qualifier_fit':scope,'horizon_eligible':fits,
    'support_index':balance,'evidence_score':round(balance*100) if balance is not None else None,
    'support_weight':round(support,5),'opposition_weight':round(opposition,5),'total_weight':round(total,5),
    'status':status,'supporting_source_count':counts['SUPPORTS'],'opposing_source_count':counts['CHALLENGES'],
    'context_source_count':counts['CONTEXT'],'source_count':len(sources),'sources':sources,
-   'probability':None,'experimental_probability':None,'probability_status':'UNAVAILABLE_NO_CALIBRATED_EVENT_MODEL',
+   'probability':None,'experimental_probability':experimental,
+   'probability_status':'EXPERIMENTAL_UNCALIBRATED' if experimental else 'UNAVAILABLE_NO_EVENT_EVIDENCE',
    'mutually_exclusive':False})
- scored.sort(key=lambda s:(not s['horizon_eligible'],s['evidence_score'] is None,-(s['support_index'] if s['support_index'] is not None else -2),s['id']))
+ scored.sort(key=lambda s:(not s['horizon_eligible'],s['experimental_probability'] is None,
+   -s['experimental_probability']['probability_estimate'] if s['experimental_probability'] else 0,s['id']))
  for rank,scenario in enumerate(scored,1):scenario['rank']=rank
  return {'version':VERSION,'status':'RANKED_RESEARCH_HYPOTHESES','ranked_scenarios':scored,
   'scenario_count':len(scored),'eligible_scenario_count':sum(s['horizon_eligible'] for s in scored),
-  'timeframe':info['timeframe'],'ranking_metric':'SIGNED_EVIDENCE_BALANCE',
+  'timeframe':info['timeframe'],'ranking_metric':'EXPERIMENTAL_UNCALIBRATED_PROBABILITY_ESTIMATE',
   'calibrated_probability':False,'hypotheses_overlap':True,'horizon_model_status':'NO_VALIDATED_HORIZON_MODEL',
   'score_formula':'100 * (supporting weight - opposing weight) / all scope-eligible story weight',
-  'notice':'Evidence balance ranges from -100 to +100. It is not a probability, confidence level or horizon forecast.'}
+  'notice':'Experimental probability estimates use an assumed 50% prior and bounded lexical evidence; not calibrated event probabilities. Paths overlap and need not sum to 100%.'}
