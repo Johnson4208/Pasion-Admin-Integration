@@ -20,6 +20,28 @@ from event_topic_matcher import normalize
 from event_news_queries import COUNTRY_TERMS, REGION_COUNTRIES, REGION_TERMS, VIETNAMESE_TOPICS
 
 # Four Google editions, GDELT, and at most one factor-specific provider job.
+# Direct first-party publishing feeds (not RSS syndication). Endpoints verified
+# against the publishers' public RSS directories, October 2026.
+# Avoid claiming a feed establishes the truth of its individual statements.
+OFFICIAL_FEEDS={
+ 'BLS CPI':('https://www.bls.gov/feed/cpi.rss','www.bls.gov',
+            'U.S. Bureau of Labor Statistics','Inflation'),
+ 'BLS Employment Situation':('https://www.bls.gov/feed/empsit.rss','www.bls.gov',
+            'U.S. Bureau of Labor Statistics','Labor market'),
+ 'EIA Today in Energy':('https://www.eia.gov/rss/todayinenergy.xml','www.eia.gov',
+            'U.S. Energy Information Administration','Energy'),
+ 'EIA Press Releases':('https://www.eia.gov/rss/press_rss.xml','www.eia.gov',
+            'U.S. Energy Information Administration','Energy')
+}
+
+def _official_jobs(factor,region):
+ """Only query official US releases in their declared geography and factor."""
+ if region[0]!='United States':return []
+ if factor=='Inflation':return ['BLS CPI']
+ if factor=='Labor market':return ['BLS Employment Situation']
+ if factor in ('Oil supply','Natural gas','Energy prices'):return ['EIA Today in Energy','EIA Press Releases']
+ return []
+
 MAX_RESP=1_300_000
 _VIETNAM_QUERY='(Vietnam OR "Viet Nam" OR "Việt Nam" OR Hanoi OR "Hà Nội" OR "Ho Chi Minh City" OR "TP.HCM")'
 _REGION_ALIASES={
@@ -83,7 +105,7 @@ def _text(value):
 
 def _get(url,accept):
  parsed=urlsplit(url)
- if (parsed.scheme!='https' or parsed.hostname not in ('news.google.com','api.gdeltproject.org','www.federalreserve.gov','mykn.kuehne-nagel.com')
+ if (parsed.scheme!='https' or parsed.hostname not in ('news.google.com','api.gdeltproject.org','www.federalreserve.gov','mykn.kuehne-nagel.com','www.bls.gov','www.eia.gov')
      or parsed.port not in (None,443) or parsed.username or parsed.password):
   raise FeedError("UNTRUSTED_PROVIDER")
  req=Request(url,headers={'User-Agent':'Pasion-Research/1.1 (public news search)','Accept':accept})
@@ -97,6 +119,30 @@ def _get(url,accept):
   raise FeedError("NEWS_NETWORK_OR_PROVIDER_ERROR") from exc
  if len(raw)>MAX_RESP:raise FeedError("NEWS_RESPONSE_TOO_LARGE")
  return raw
+
+def _official_rss(name):
+ """Parse published first-party RSS, bound to a fixed host and direct links."""
+ if name not in OFFICIAL_FEEDS:raise FeedError('UNKNOWN_OFFICIAL_FEED')
+ address,expected_host,source,_=OFFICIAL_FEEDS[name]
+ try:root=ET.fromstring(_get(address,'application/rss+xml, application/xml, text/xml'))
+ except ET.ParseError as exc:raise FeedError('OFFICIAL_RSS_PARSE_FAILED') from exc
+ # Both direct US publisher feeds use RSS2; reject arbitrary embedded links.
+ now=datetime.now(timezone.utc);rows=[]
+ for node in root.findall('.//channel/item')[:65]:
+  title=_text(node.findtext('title'))
+  link=str(node.findtext('link') or '').strip()
+  parsed=urlsplit(link)
+  if parsed.scheme!='https' or parsed.hostname not in (expected_host,expected_host.removeprefix('www.')) or parsed.username or parsed.password:continue
+  raw_date=node.findtext('pubDate')
+  try:when=parsedate_to_datetime(raw_date).astimezone(timezone.utc)
+  except (TypeError,ValueError,OverflowError,AttributeError):continue
+  if not title or when>now:continue
+  rows.append({'title':title,'description':_text(node.findtext('description')),
+               'url':link,'source':source,'published_at':when.isoformat(),
+               'provider':name,'time_basis':'PUBLISHED','edition':'US',
+               'source_tier':'PRIMARY_OFFICIAL_UNVERIFIED_CLAIM',
+               'publisher_domain':expected_host,'source_direct':True})
+ return rows
 
 def _rss(query,edition):
  hl,gl,ceid=edition
@@ -256,6 +302,16 @@ def retrieve(topic_terms,focus,*,factor=None,lookback_days=30):
  jobs=[('Google News RSS',query,edition) for query,edition in _variants(topic_terms,focus,region,factor=factor,lookback_days=lookback_days)]
  gdeltquery=('"shipping disruption" Vietnam' if 'shipping trade route supply disruption' in topic_terms and region[0]=='Vietnam' else ' '.join(re.findall(r"[A-Za-z]+",topic_terms)[:2])+' '+region[1]).strip()
  jobs.append(('GDELT DOC 2.0',gdeltquery,None))
+ for name in _official_jobs(factor,region):
+  jobs.append((name,'',None))
+ # Discover Vietnamese government statistics through indexed search, not a
+ # first-party RSS connection. Preserve aggregator/unverified provenance.
+ if region[0]=='Vietnam' and factor in ('GDP growth','Inflation','Labor market'):
+  vietnamese=('GDP tăng trưởng số liệu' if factor=='GDP growth'
+              else 'chỉ số giá tiêu dùng CPI' if factor=='Inflation'
+              else 'lao động việc làm thất nghiệp')
+  q='site:nso.gov.vn ('+vietnamese+') when:'+str(lookback_days)+'d'
+  jobs.append(('Google News official-site discovery',q,('vi','VN','VN:vi')))
  if region[0]=='Vietnam' and 'shipping trade route supply disruption' in topic_terms:
   jobs.append(('Kuehne+Nagel public port operations','',None))
  if any(word in topic_terms.lower() for word in ('central bank','interest rates','inflation','credit conditions','mortgage rates','monetary policy')):
@@ -263,17 +319,17 @@ def retrieve(topic_terms,focus,*,factor=None,lookback_days=30):
  results=[];failed=[];succeeded=0;request_results=[]
  def job(spec):
   name,q,edition=spec
-  try:return name,edition,(_port_report_vietnam() if name=='Kuehne+Nagel public port operations' else _fed_official() if name=='Federal Reserve official RSS' else _gdelt(q,lookback_days=lookback_days) if edition is None else _rss(q,edition)),None
+  try:return name,edition,(_official_rss(name) if name in OFFICIAL_FEEDS else _port_report_vietnam() if name=='Kuehne+Nagel public port operations' else _fed_official() if name=='Federal Reserve official RSS' else _gdelt(q,lookback_days=lookback_days) if edition is None else _rss(q,edition)),None
   except (FeedError,ValueError,TypeError,KeyError) as e:
    reason=str(e.args[0]) if e.args else 'PROVIDER_ERROR'
    # Do not expose arbitrary provider responses, request URLs or user data.
    if not re.fullmatch(r'[A-Z][A-Z0-9_]{0,79}',reason):reason='PROVIDER_RESPONSE_ERROR'
    return name,edition,[],reason
- with concurrent.futures.ThreadPoolExecutor(max_workers=7) as pool:
+ with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
   futures=[pool.submit(job,s) for s in jobs]
   for future in concurrent.futures.as_completed(futures):
    name,edition,items,issue=future.result()
-   diagnostic={'provider':name,'edition':edition[1] if edition else 'US' if name=='Federal Reserve official RSS' else 'VN' if name=='Kuehne+Nagel public port operations' else 'global',
+   diagnostic={'provider':name,'edition':edition[1] if edition else 'US' if name=='Federal Reserve official RSS' or name in OFFICIAL_FEEDS else 'VN' if name=='Kuehne+Nagel public port operations' else 'global',
                'status':'FAILED' if issue else 'SUCCESS','returned_count':len(items)}
    if issue:diagnostic['reason']=issue
    request_results.append(diagnostic)
