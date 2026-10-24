@@ -26,7 +26,6 @@ async function open(page) {
   await expect(page.getByRole('heading',{name:'Compare end-of-period outcomes.'})).toBeVisible();
 }
 async function analyze(page) {
-  await page.getByRole('button',{name:'Analyze evidence',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Gradual improvement',exact:true})).toBeVisible();
 }
 const reportRegion = page => page.getByRole('region',{name:'Scenario research report'});
@@ -37,12 +36,11 @@ test.beforeEach(async({page}) => {
   await page.route('**/api/research/company/**',r => r.fulfill({json:{status:'UNAVAILABLE'}}));
 });
 
-test('empty screen explains the workflow; score and full source trace do not expose experimental percentages',async({page}) => {
+test('evidence starts in the background; a pathway, not the report, opens its full source trace',async({page}) => {
   await page.route('**/api/research/events/live?*',r => r.fulfill({json:report()}));
   await open(page);
-  await expect(page.getByRole('heading',{name:'Compare the complete outcome group',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Research pathways',exact:true})).toBeVisible();
   await expect(page.locator('.ev-supporting-research')).not.toHaveAttribute('open');
-  await expect(page.locator('.ev-scenario')).toHaveCount(0);
   await analyze(page);
   await expect(page.locator('.ev-score strong')).toHaveText('+40');
   await expect(reportRegion(page)).not.toContainText('72.4%');
@@ -68,11 +66,9 @@ test('changing a pending query cancels the old result and cannot save it under a
     await route.fulfill({json:report(q)});
   });
   await open(page);
-  await page.getByRole('button',{name:'Analyze evidence'}).click();
   const pending=await intercepted;
   await page.getByLabel('Region / entity').fill('Japan');
   await pending.fulfill({json:report()}).catch(() => {});
-  await expect(page.locator('.ev-scenario')).toHaveCount(0);
   await analyze(page);
   await expect(reportRegion(page).locator('header h2')).toHaveText('Conflict risk · Japan');
   await page.getByRole('button',{name:'Save report',exact:true}).click();
@@ -196,8 +192,7 @@ test('legacy saved snapshots remain readable without bringing back experimental 
   await page.getByRole('button',{name:'Open saved report: Conflict risk, Vietnam'}).click();
   await expect(reportRegion(page)).toContainText('Older saved report. Experimental percentages are hidden');
   await expect(reportRegion(page)).not.toContainText('72.4%');
-  await page.getByRole('button',{name:'All sources',exact:true}).click();
-  await expect(page.getByRole('dialog')).toContainText('Original saved story');
+  await expect(page.getByRole('button',{name:'All sources',exact:true})).toHaveCount(0);
 });
 
 test('malformed source data is rejected without crashing the workspace',async({page}) => {
@@ -299,6 +294,7 @@ test('collected retrospective observations do not automatically become validated
       measurement:'Synthetic historical-coverage fixture; review is still required.'}]}};
   await page.route('**/api/research/events/live?*',r => r.fulfill({json:data}));
   await open(page);await analyze(page);
+  await page.locator('.ev-supporting-research > summary').click();
   const context=page.getByRole('complementary',{name:'Research context'});
   await expect(context).toContainText('37 observations collected');
   await expect(context).toContainText('historical availability still need review');
@@ -318,6 +314,7 @@ test('collection diagnostics distinguish retrieved news, filtering, regional evi
     outcome_history:{status:'NOT_COLLECTED',profiles:[{id:'vietnam-conflict',provider:'UCDP',frequency:'EVENT_INTERVAL',observation_count:0}]}};
   await page.route('**/api/research/events/live?*',r => r.fulfill({json:data}));
   await open(page);await analyze(page);
+  await page.locator('.ev-supporting-research > summary').click();
   const status=page.getByRole('region',{name:'News collection status',exact:true});
   await expect(status.locator('.ev-collection-counts dd')).toHaveText(['120','20','0']);
   await expect(status).toContainText('Zero outcome observations does not mean no news was collected');
@@ -452,15 +449,14 @@ async function mockResearchOptions(page) {
   ]}}));
 }
 
-test('primary research calculation shows all outcomes with uncertainty, source dates and validation before optional news',async({page}) => {
-  await mockResearchOptions(page);let newsCalls=0,posted;
-  await page.route('**/api/research/events/live?*',r => {newsCalls++;return r.fulfill({json:report()});});
+test('automatic probability shortcut starts a full probability group while evidence continues in the background',async({page}) => {
+  await mockResearchOptions(page);const newsQueries=[];let posted;
+  await page.route('**/api/research/events/live?*',r => {const live=Object.fromEntries(new URL(r.request().url()).searchParams);newsQueries.push(live);return r.fulfill({json:report(live)});});
   await page.route('**/api/research/events/forecast',r => {posted=r.request().postDataJSON();return r.fulfill({json:researchEnvelope(seriesModel())});});
   await open(page);
   await expect(page.getByLabel('Region / entity',{exact:true})).toHaveValue('Vietnam');
   await page.getByRole('button',{name:'Equity volatility · United States',exact:true}).click();
   await expect(page.getByLabel('Region / entity',{exact:true})).toHaveValue('United States');
-  await page.getByRole('button',{name:'Calculate scenario probabilities',exact:true}).click();
   const comparison=page.getByRole('region',{name:'All scenario probabilities'});
   await expect(comparison.locator('.ev-comparison-row')).toHaveCount(5);
   await expect(comparison.locator('.ev-outcome-probability strong')).toHaveText(['5.2%','10.1%','69.4%','10.1%','5.2%']);
@@ -470,18 +466,19 @@ test('primary research calculation shows all outcomes with uncertainty, source d
   await expect(comparison).toContainText('End of the selected period');
   await expect(comparison).toContainText('This forecast was recorded before its end date');
   await expect(page.locator('.ev-supporting-research')).not.toHaveAttribute('open');
-  expect(newsCalls).toBe(0);
+  await expect.poll(() => newsQueries.some(live => live.focus === 'United States')).toBe(true);
   expect(posted).toEqual(seriesModel().context);
   await comparison.getByText('Model, history and validation',{exact:true}).click();
   await expect(comparison).toContainText('Historical check only; future calibration not established');
   await expect(comparison.getByRole('link',{name:'FRED ↗'})).toHaveAttribute('href','https://fred.stlouisfed.org/series/VIXCLS');
+  await expect(page.getByRole('heading',{name:'Research pathways',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'View evidence: Gradual improvement',exact:true}).click();
+  await expect(page.getByRole('dialog')).toContainText('20 articles available');
+  await page.getByRole('button',{name:'Close evidence',exact:true}).click();
   await page.getByRole('button',{name:'Save report',exact:true}).click();
   await page.reload();
   await page.getByRole('button',{name:'Open saved report: Equity volatility, United States'}).click();
   await expect(comparison.locator('.ev-comparison-row')).toHaveCount(5);
-  await page.locator('.ev-supporting-research > summary').click();
-  await expect(page.getByRole('button',{name:'Collect supporting news',exact:true})).toBeVisible();
-  await expect(page.getByRole('region',{name:'News collection status',exact:true}).locator('.ev-collection-counts dd')).toHaveText(['Not recorded','Not recorded','Not recorded']);
 });
 
 test('unsupported questions retain their context and name every missing requirement without invented percentages',async({page}) => {
