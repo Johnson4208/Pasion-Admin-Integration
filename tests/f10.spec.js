@@ -27,6 +27,13 @@ test.beforeEach(async({page})=>{
  await page.route('**/api/session',r=>r.fulfill({json:{authenticated:true,isAdmin:false,user:{name:'Event Tester',email:'event-test@example.com'}}}));
  await page.route('**/api/research/company/**',r=>r.fulfill({json:{status:'UNAVAILABLE'}}));
 });
+test('initial results remain compact with a labeled zero placeholder',async({page})=>{
+ await start(page);
+ await expect(page.locator('.events-ranking-compact')).toBeVisible();
+ await expect(page.locator('.events-initial-summary')).toContainText('0%');
+ await expect(page.locator('.events-initial-summary')).toContainText('Not calculated');
+ await expect(page.locator('.events-ranked-item')).toHaveCount(0);
+});
 test('restored probability ranking shows ten pathways and bounded research labels',async({page})=>{
  await page.route('**/api/research/events/live?*',r=>r.fulfill({json:report()}));
  await start(page);await page.getByRole('button',{name:/^Analyze/}).click();
@@ -34,7 +41,8 @@ test('restored probability ranking shows ten pathways and bounded research label
  await expect(page.locator('.events-rank-value').first()).toHaveText('73.2%*');
  await expect(page.locator('.events-rank-value').nth(1)).toHaveText('64.1%*');
  await expect(page.locator('.events-ranked-note')).toContainText('NOT calibrated');
- await expect(page.locator('.events-rank-value').nth(9)).toHaveText('—');
+ await expect(page.locator('.events-rank-value').nth(9)).toHaveText('0%');
+ await expect(page.locator('.events-ranked-note')).toContainText('display placeholder');
  await expect(page.getByRole('heading',{name:'Ranked scenario pathways'})).toBeVisible();
 });
 test('loading overlays the prior results and clears after evidence returns',async({page})=>{
