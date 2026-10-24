@@ -95,7 +95,17 @@ def display(result):
     if historical:return historical
     board=result.get("dynamic_scenarios") or {}
     dist=board.get("scenario_distribution") or {}
-    if dist.get("status")=="NORMALIZED_EXPERIMENTAL_UNCALIBRATED":
+    rows=board.get("ranked_scenarios") or []
+    weights=[row.get("scenario_share_percent",0) for row in rows]
+    # Defense in depth: refuse malformed/monopolized uncalibrated distributions
+    # even if an upstream component incorrectly marks them as normalized.
+    eligible=(len(rows)==10
+              and all(type(x) in (int,float) and math.isfinite(x) and x>=0 for x in weights)
+              and sum(x>0 for x in weights)>=2
+              and sum(weights)>=99.95 and sum(weights)<=100.05
+              and max(weights)<90
+              and dist.get("estimated_scenario_count",0)>=2)
+    if dist.get("status")=="NORMALIZED_EXPERIMENTAL_UNCALIBRATED" and eligible:
         return {"schema_version":1,"version":VERSION,"type":"RESEARCH_SHARE",
             "status":"UNCALIBRATED_RESEARCH_SHARE","label":"Research estimate",
             "rows":board.get("ranked_scenarios") or [],
