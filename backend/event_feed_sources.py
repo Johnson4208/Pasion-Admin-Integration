@@ -307,9 +307,9 @@ def retrieve(topic_terms,focus,*,factor=None,lookback_days=30):
  # Discover Vietnamese government statistics through indexed search, not a
  # first-party RSS connection. Preserve aggregator/unverified provenance.
  if region[0]=='Vietnam' and factor in ('GDP growth','Inflation','Labor market'):
-  vietnamese=('GDP tăng trưởng số liệu' if factor=='GDP growth'
-              else 'chỉ số giá tiêu dùng CPI' if factor=='Inflation'
-              else 'lao động việc làm thất nghiệp')
+  vietnamese=('GDP OR "tăng trưởng kinh tế" OR "tổng sản phẩm trong nước"' if factor=='GDP growth'
+              else 'CPI OR "chỉ số giá tiêu dùng" OR "lạm phát"' if factor=='Inflation'
+              else '"lao động" OR "việc làm" OR "thất nghiệp"')
   q='site:nso.gov.vn ('+vietnamese+') when:'+str(lookback_days)+'d'
   jobs.append(('Google News official-site discovery',q,('vi','VN','VN:vi')))
  if region[0]=='Vietnam' and 'shipping trade route supply disruption' in topic_terms:
