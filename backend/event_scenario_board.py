@@ -69,6 +69,22 @@ def _normalize_scenario_shares(scenarios,eligible_stories=None):
   return {'status':'NOT_CALCULATED','total_percent':0.,
           'estimated_scenario_count':0,'basis':'NO_POSITIVE_NET_EVIDENCE',
           'quality':'UNAVAILABLE'}
+ # Gate against artificial near-certainty from normalizing sparse/signed news.
+ # Research evidence (unlike a reviewed historical model) cannot become an
+ # apparent 100% outcome forecast simply because all other net balances <= 0.
+ active=sum(v>0 for v in raw)
+ concentration=max(raw)/total
+ if active<2 or concentration>=.90:
+  for row in scenarios:
+   row['scenario_share_percent']=0.
+   row['scenario_share_status']='NOT_CALCULATED'
+  return {'status':'WITHHELD_CONCENTRATED_EVIDENCE',
+          'total_percent':None,'estimated_scenario_count':active,
+          'basis':'DEGENERATE_NEWS_NORMALIZATION',
+          'quality':'UNVALIDATED_CONCENTRATED_EVIDENCE',
+          'dominant_share_if_normalized':round(concentration,4),
+          'reason_code':'ONLY_ONE_NET_SUPPORTED_PATHWAY' if active<2 else 'EXTREME_EVIDENCE_CONCENTRATION',
+          'notice':'News weight normalization would create misleading near-certainty. No event probability issued.'}
  tenths=[1000*x/total for x in raw]
  whole=[math.floor(x) for x in tenths]
  remainder=1000-sum(whole)
