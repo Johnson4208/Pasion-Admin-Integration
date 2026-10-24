@@ -126,8 +126,8 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
     </div>}</div>
    {!showExpanded&&<div className="events-initial-summary" role="status"><div className="events-initial-value"><strong>0%</strong><span>Not calculated</span></div><p>Choose your research settings and select <strong>Analyze</strong> to reveal the scenario ranking.</p></div>}
    {showExpanded&&<>
-   {noEligible&&<div className="events-empty-diagnostic" role="status"><strong>{scenarioDistribution?.status==='WITHHELD_CONCENTRATED_EVIDENCE'?'Evidence leans strongly one way — probability not validated':'Not enough evidence to calculate'}</strong><p>{scenarioDistribution?.status==='WITHHELD_CONCENTRATED_EVIDENCE'?'Available news favors one pathway, but converting those weights into 100% certainty would be misleading. Review the sources in Evidence.':'Try another topic, region or period. Source information is available under Evidence when retrieved.'}</p></div>}
-   {!noEligible&&<div className="events-ranked-list">
+   {noEligible&&<div className="events-empty-diagnostic" role="status"><strong>{scenarioDistribution?.status==='WITHHELD_CONCENTRATED_EVIDENCE'?'Evidence leans strongly one way — probability not validated':'Not enough evidence to calculate'}</strong><p>{scenarioDistribution?.status==='WITHHELD_CONCENTRATED_EVIDENCE'?'The evidence is too concentrated to calculate reliable scenario percentages. All 10 pathways remain below for review; their 0% labels mean not calculated. Open Evidence for sources.':'The 10 candidate pathways remain available below for inspection. 0% means not calculated, not impossible.'}</p></div>}
+   <div className="events-ranked-list">
     {(ranked.length?ranked:Array.from({length:10},(_,i)=>({id:'pending-'+i,rank:i+1,title:'Awaiting research',status:'PENDING_EVIDENCE',sources:[],support_index:null}))).map(sc=>{
       const old=oldRanked.find(x=>x.id===sc.id);
       const p=normalizedReady?(sc.scenario_share_percent??0):0;
@@ -137,14 +137,15 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
        <span className="events-rank-number">{String(sc.rank).padStart(2,'0')}</span>
        <div className="events-rank-main"><div className="events-rank-heading"><div><strong>{sc.title}</strong><p>{sc.definition||'Start an analysis to evaluate this pathway.'}</p></div><span className="events-rank-value" title={historical?'Historical reference-class outcome frequency, not guaranteed future performance':estimated?'Uncalibrated relative news-evidence share, not event probability.':'Not calculated — 0% display placeholder.'}>{estimated?p.toFixed(1)+'%'+(historical?'':'*'):'0%'}</span></div>
         <div className="events-ranked-track" role="img" aria-label={estimated?(historical?'Historical reference estimate ':'Research share ')+p.toFixed(1)+' percent':'Not calculated; 0 percent is a display placeholder, not an event probability'}><i style={{width:estimated?Math.max(0,Math.min(100,p))+'%':'0%'}}/></div>
-        <div className="events-rank-foot"><span>{estimated?(historical?'Based on reviewed historical outcomes':(researchQuality+' · uncalibrated')):'Not calculated'}{historical?'': ' · '+(sc.supporting_source_count||0)+' supporting sources'} {delta===null||historical?'':' · revised '+(delta>0?'+':'')+delta+' pts'}</span>
+        <div className="events-rank-foot"><span>{estimated?(historical?'Based on reviewed historical outcomes':(researchQuality+' · uncalibrated')):noEligible?'Probability not calculated':'Not calculated'}{historical?'': ' · '+(sc.supporting_source_count||0)+' supporting sources'} {delta===null||historical||noEligible?'':' · revised '+(delta>0?'+':'')+delta+' pts'}</span>
          {!historical&&<button type="button" onClick={()=>setEvidenceOpen({id:sc.id,title:sc.title,sources:sc.sources||[]})}>Evidence <span aria-hidden="true">↗</span></button>}</div>
        </div>
       </article>;
     })}
-   </div>}
+   </div>
    {normalizedReady&&<div className="events-distribution-total" role="status"><span>Total</span><strong>{(historical?presentation.total_percent:scenarioDistribution.total_percent).toFixed(1)}%</strong></div>}
    {normalizedReady&&<p className="events-ranked-note">{historical?'Historical reference, not a guarantee of future results.':'* Research shares are not validated event probabilities. Total 100% represents only a relative allocation of supporting news.'}</p>}
+   {noEligible&&<p className="events-ranked-note">0% is a display placeholder while probability is not calculated; source counts are evidence, not event likelihoods. Scenarios are listed for inspection, not ranked by probability.</p>}
    </>}
    {loading&&<div className="events-loading-overlay" role="status" aria-live="polite"><div className="events-loading-spinner" aria-hidden="true"/><strong>Analyzing new evidence</strong><span>Retrieving sources and comparing scenario pathways…</span></div>}
   </section>
