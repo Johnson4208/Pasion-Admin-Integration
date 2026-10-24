@@ -19,6 +19,7 @@ import event_direction
 import event_forecasts
 import event_outcome_data
 import event_series_forecasts
+import event_scenario_presentation
 
 _TOPICS={
  'Geopolitics': {'Conflict risk':('conflict escalation ceasefire regional security','conflict escalation ceasefire stability'),
@@ -118,6 +119,7 @@ def _with_forecast(result, basis, now):
  result['basis']=basis
  result['outcome_history']=event_outcome_data.coverage(result['category'],result['factor'],result['focus'])
  result['scenario_forecast']=_forecast(result['category'],result['factor'],result['focus'],result['horizon'],basis,now)
+ result['scenario_presentation']=event_scenario_presentation.display(result)
  if result['scenario_forecast']['status'] in ('REFERENCE_ESTIMATE_AVAILABLE','RESEARCH_ESTIMATE_AVAILABLE') and result['status']=='UNAVAILABLE':
   result['status']='FORECAST_AVAILABLE'
  return result
