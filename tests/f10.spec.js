@@ -50,6 +50,24 @@ test('restored probability ranking shows ten pathways and bounded research label
  await expect(page.locator('.events-ranked-note')).toContainText('relative allocation');
  await expect(page.getByRole('heading',{name:'Ranked scenario pathways'})).toBeVisible();
 });
+test('one-sided news must not show a fake 100 percent outcome forecast',async({page})=>{
+ const data=report(base,{
+   scenario_presentation:{type:'UNAVAILABLE',status:'NOT_CALCULATED',rows:[],total_percent:null},
+   dynamic_scenarios:{
+     ranked_scenarios:Array.from({length:10},(_,i)=>({id:'scenario-'+i,rank:i+1,
+       title:'Scenario '+i,scenario_share_percent:0,scenario_share_status:'NOT_CALCULATED',
+       supporting_source_count:i===0?47:i===1?8:0,sources:[]})),
+     scenario_distribution:{status:'WITHHELD_CONCENTRATED_EVIDENCE',
+       reason_code:'ONLY_ONE_NET_SUPPORTED_PATHWAY',estimated_scenario_count:1,total_percent:null}
+   }
+ });
+ await page.route('**/api/research/events/live?*',r=>r.fulfill({json:data}));
+ await start(page);await page.getByRole('button',{name:/^Analyze/}).click();
+ await expect(page.locator('.events-empty-diagnostic')).toContainText('Evidence leans strongly one way');
+ await expect(page.locator('.events-ranked-item')).toHaveCount(0);
+ await expect(page.locator('.events-distribution-total')).toHaveCount(0);
+ await expect(page.getByRole('button',{name:/Evidence/}).first()).toBeEnabled();
+});
 test('reviewed historical ten-outcome family takes precedence over news shares',async({page})=>{
  const outcomes=Array.from({length:10},(_,i)=>({
    id:'historical-'+i,rank:i+1,title:'Reviewed outcome '+(i+1),
