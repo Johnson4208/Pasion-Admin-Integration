@@ -64,7 +64,10 @@ test('one-sided news must not show a fake 100 percent outcome forecast',async({p
  await page.route('**/api/research/events/live?*',r=>r.fulfill({json:data}));
  await start(page);await page.getByRole('button',{name:/^Analyze/}).click();
  await expect(page.locator('.events-empty-diagnostic')).toContainText('Evidence leans strongly one way');
- await expect(page.locator('.events-ranked-item')).toHaveCount(0);
+ await expect(page.locator('.events-ranked-item')).toHaveCount(10);
+ await expect(page.locator('.events-rank-value')).toHaveCount(10);
+ await expect(page.locator('.events-ranked-note')).toContainText('not ranked by probability');
+ await expect(page.locator('.events-rank-value').first()).toHaveText('0%');
  await expect(page.locator('.events-distribution-total')).toHaveCount(0);
  await expect(page.getByRole('button',{name:/Evidence/}).first()).toBeEnabled();
 });
@@ -131,7 +134,9 @@ test('empty or externally scoped evidence does not invent probabilities',async({
   source_count:1,items:[source(1,{geographic_relation:'EXTERNAL_CONTEXT'})]})}));
  await start(page);await page.getByRole('button',{name:/^Analyze/}).click();
  await expect(page.locator('.events-empty-diagnostic')).toBeVisible();
- await expect(page.locator('.events-ranked-item')).toHaveCount(0);
+ await expect(page.locator('.events-ranked-item')).toHaveCount(10);
+ await expect(page.locator('.events-ranked-item').first().getByRole('button',{name:/Evidence/})).toBeVisible();
+ await expect(page.locator('.events-rank-value').first()).toHaveText('0%');
 });
 test('research is saved separately from server event memory',async({page})=>{
  await page.route('**/api/research/events/live?*',r=>r.fulfill({json:report()}));
