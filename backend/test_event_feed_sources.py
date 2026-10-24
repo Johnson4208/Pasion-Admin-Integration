@@ -14,6 +14,39 @@ class RegionalNewsTests(unittest.TestCase):
   self.assertEqual(s.geography('Southeast Asia')[0],'Southeast Asia')
   self.assertEqual(s.geography('Vietnam')[2],'VN')
   self.assertEqual(s.geography('United States')[2],'US')
+ def test_official_feeds_are_factor_and_region_scoped(self):
+  self.assertEqual(s._official_jobs('Inflation',s.geography('United States')),['BLS CPI'])
+  self.assertEqual(s._official_jobs('Labor market',s.geography('USA')),['BLS Employment Situation'])
+  self.assertEqual(len(s._official_jobs('Oil supply',s.geography('US'))),2)
+  self.assertEqual(s._official_jobs('Inflation',s.geography('Vietnam')),[])
+  self.assertEqual(s._official_jobs('Oil supply',s.geography('World')),[])
+
+ def test_first_party_rss_rejects_foreign_links_or_unknown_timestamps(self):
+  from datetime import datetime,timezone,timedelta
+  date=(datetime.now(timezone.utc)-timedelta(days=1)).strftime('%a, %d %b %Y %H:%M:%S +0000')
+  document=f"""<rss><channel>
+    <item><title>Consumer Price Index rises</title><link>https://www.bls.gov/news.release/cpi.htm</link><pubDate>{date}</pubDate><description>Latest CPI release</description></item>
+    <item><title>Forged release</title><link>https://evil.example.org/fake</link><pubDate>{date}</pubDate></item>
+    <item><title>Undated data</title><link>https://www.bls.gov/news.release/undated.htm</link></item>
+  </channel></rss>""".encode()
+  with patch.object(s,'_get',return_value=document) as get:
+   rows=s._official_rss('BLS CPI')
+  self.assertEqual(len(rows),1)
+  self.assertEqual(rows[0]['source_tier'],'PRIMARY_OFFICIAL_UNVERIFIED_CLAIM')
+  self.assertEqual(rows[0]['publisher_domain'],'www.bls.gov')
+  self.assertTrue(rows[0]['source_direct'])
+  self.assertEqual(rows[0]['time_basis'],'PUBLISHED')
+  self.assertEqual(get.call_args.args[0],'https://www.bls.gov/feed/cpi.rss')
+
+ def test_official_feed_rejects_unrecognized_feed_name(self):
+  with self.assertRaises(s.FeedError):s._official_rss('user-provided')
+  self.assertIn('www.eia.gov',s._get.__code__.co_consts.__repr__())
+
+ def test_official_statistics_discovery_is_indexed_not_automatically_verified(self):
+  queries=s._variants('GDP growth economic output recession','Vietnam',s.geography('Vietnam'),factor='GDP growth')
+  self.assertEqual(len(queries),4)
+  self.assertNotIn('site:nso.gov.vn',queries[0][0])
+
  def test_user_text_cannot_change_provider_host(self):
   with self.assertRaises(ValueError):s.geography('https://private.example')
   with self.assertRaises(ValueError):s.geography('Asia\nattack')
