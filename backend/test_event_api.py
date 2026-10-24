@@ -43,7 +43,9 @@ class EventApiTests(unittest.TestCase):
         self.assertFalse(result['calibrated_probability'])
         self.assertEqual(result['items'][0]['direction'],-1)
         self.assertEqual(result['items'][0]['geographic_relation'],'DIRECT_SCOPE')
-        self.assertEqual(result['dynamic_scenarios']['ranking_metric'],'EXPERIMENTAL_UNCALIBRATED_PROBABILITY_ESTIMATE')
+        self.assertEqual(result['dynamic_scenarios']['ranking_metric'],'NORMALIZED_EXPERIMENTAL_SCENARIO_SHARE')
+        self.assertEqual(result['dynamic_scenarios']['scenario_distribution']['total_percent'],100.0)
+        self.assertAlmostEqual(sum(s['scenario_share_percent'] for s in result['dynamic_scenarios']['ranked_scenarios']),100.0)
         self.assertTrue(all(s['experimental_probability'] is None or s['experimental_probability']['calibrated'] is False for s in result['dynamic_scenarios']['ranked_scenarios']))
 
     def test_live_feed_failure_is_reported_without_manufactured_results(self):
