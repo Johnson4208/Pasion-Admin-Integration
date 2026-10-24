@@ -447,3 +447,13 @@
 @media(max-width:1100px){.events-refined .events-question-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.events-ranking-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.events-refined .events-question-grid{grid-template-columns:1fr}.events-ranking-actions{width:100%}.events-modal-backdrop{padding:7px}.events-evidence-modal{max-height:95vh}.events-modal-heading,.events-evidence-scroll{padding-inline:15px}.events-refined .events-intro-card{flex-wrap:wrap}}
 @media(prefers-reduced-motion:reduce){.events-loading-spinner{animation-duration:2s}}
+
+
+/* Initial compact research state: results expand only after Analyze. */
+.events-refined .events-ranking-compact{min-height:0;padding-bottom:20px}
+.events-refined .events-ranking-compact .events-ranking-heading{border-bottom:0;padding-bottom:0}
+.events-initial-summary{margin-top:15px;background:#f6f9fc;border:1px solid #e3eaf2;border-radius:9px;padding:16px 20px;display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.events-initial-value{display:flex;align-items:baseline;gap:10px;white-space:nowrap}
+.events-initial-value strong{color:#1d507d;font-size:23px;font-weight:750}
+.events-initial-value span{font-size:12px;color:#63809e;font-weight:650}
+.events-initial-summary p{margin:0;color:#63809e;font-size:12px;line-height:1.5}
