@@ -1,9 +1,15 @@
-PASION — MỘT BỘ MÃ NGUỒN HOÀN CHỈNH — 23/10/2026
+PASION — MỘT BỘ MÃ NGUỒN HOÀN CHỈNH — 24/10/2026
 
 Bản này giữ Event Scenarios mới, so sánh toàn nhóm kết quả, nền tảng dữ liệu
 đối chiếu, Vite 6.4.5 và công cụ khôi phục dữ liệu backend trên máy bạn.
 ZIP nguồn không chứa tài khoản, tài liệu riêng, khóa API hoặc môi trường cài sẵn.
-Chưa có mô hình xác suất thực đã được kiểm định; không tự sinh phần trăm giả.
+Có ước tính nghiên cứu tự động từ hai chuỗi FRED đã xác nhận truy cập:
+VIX Hoa Kỳ và lãi suất vay mua nhà Hoa Kỳ. Hiển thị toàn nhóm cuối kỳ,
+khoảng bất định và kết quả kiểm tra lịch sử. Chưa tuyên bố hiệu chuẩn tương lai.
+Chọn câu hỏi được hỗ trợ và bấm Calculate scenario probabilities.
+Vietnam / Conflict risk vẫn cần định nghĩa kết quả và dữ liệu phù hợp;
+không tự đổi sang câu hỏi khác hoặc gán phần trăm từ số bài báo.
+Xem EVENT_SERIES_RESEARCH.md.
 
 TIN TỨC THU THẬP VÀ DỮ LIỆU CŨ
 - Đã sửa nguồn Google News tiếng Việt và nhận diện tin về Hà Nội/TP.HCM.

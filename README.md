@@ -81,9 +81,35 @@ Uploads are limited to 10 MB, PDFs to 50 pages, OCR to 20 scanned pages, images 
 Summaries and document questions become available after configuring an AI provider on the server. With no provider configured, local extraction and search work and AI controls explain the missing connection. Set DOCUMENT_AI_PROVIDER to ollama and DOCUMENT_AI_MODEL to the name of an installed model; OLLAMA_BASE_URL defaults to http://127.0.0.1:11434. Alternatively set DOCUMENT_AI_PROVIDER to openai, DOCUMENT_AI_MODEL to a model available in your project, and OPENAI_API_KEY. Restart the API after changing environment variables. Keys stay on the server. Questions send selected extracted excerpts to the configured provider, and responses link to valid source sections. Long-document summaries explicitly disclose when they use selected excerpts. The adapters follow the [OpenAI Responses documentation](https://developers.openai.com/api/docs/guides/text) and [Ollama generate API](https://docs.ollama.com/api/generate).
 
 
-### Event Scenarios: evidence and saved reports
+### Event Scenarios: probabilities, supporting evidence and saved reports
 
-Event Scenarios ranks research pathways by **evidence balance**, from −100 to
+Choose a supported question and select **Calculate scenario probabilities**.
+The server collects real public observations, constructs a complete group of
+end-of-period outcomes and shows every estimate together with a 95% uncertainty
+interval, the probability gap, sample sizes and later historical evaluation.
+The raw probabilities sum to 100%; independently rounded labels can differ
+slightly. Definition order is the default so close alternatives receive the
+same treatment.
+
+Automatic research estimates currently cover **US equity volatility (FRED
+VIXCLS)** and **US mortgage rates (FRED MORTGAGE30US)**. These are symmetric
+Jeffreys-smoothed historical reference rates, evaluated on later, disjoint
+periods. They do not condition on today's news or establish future calibration.
+The interface offers these questions explicitly; it never silently substitutes
+them for Vietnam conflict risk or another unsupported selection. Unsupported
+questions show the missing outcome definition, source or historical model.
+See [EVENT_SERIES_RESEARCH.md](EVENT_SERIES_RESEARCH.md) for thresholds, temporal
+rules, uncertainty and limitations.
+
+Prepared models and immutable public source snapshots stay in
+`backend/private-event-models/`, outside Git and source ZIPs. The server records
+research forecasts before maturity and checks due forecasts against later
+source snapshots when a new estimate is requested. This prospective ledger
+does not automatically confer a calibrated status. Its summary is available
+to signed-in users at `/api/research/events/forecast-history`.
+
+Open **Supporting research** to collect or inspect news separately.
+Research pathways use **evidence balance**, from −100 to
 +100: `100 × (supporting weight − challenging weight) / all scope-eligible
 story weight`. This is not an event probability or a confidence score. Both
 supporting and opposing stories remain in the source notebook; unknown
@@ -93,9 +119,10 @@ review. A single story does not establish source independence.
 
 The selected horizon sets the maturity of a forecast and, separately, the
 lookback of the evidence notebook. Short-lived/long-lived research pathways are
-filtered accordingly. No real historical model catalog is bundled. Without a
-reviewed catalog covering the exact context, the live service withholds
-probabilities. Historical experimental percentages stay hidden in older reports.
+filtered accordingly. An independently reviewed historical model catalog can
+also be installed for an exact context. Without a suitable catalog or supported
+automatic research model, the service withholds probabilities. Historical
+experimental headline percentages stay hidden in older reports.
 
 The complete-outcome comparison supports end-of-period distributions and
 overlapping occurrence probabilities. It shows every model-defined outcome,
@@ -120,7 +147,8 @@ as fresh evidence. Company News distinguishes loading, request errors and empty
 storage. See [NEWS-COLLECTION.md](NEWS-COLLECTION.md) for the three backend stores,
 the Vietnamese feed fix, local-data recovery and optional background collection.
 
-Public retrieval needs HTTPS access to `news.google.com` and
+Automatic research preparation needs HTTPS access to `fred.stlouisfed.org`.
+Public news retrieval needs HTTPS access to `news.google.com` and
 `api.gdeltproject.org`, plus `www.federalreserve.gov` for monetary topics and
 `mykn.kuehne-nagel.com` for Vietnam port reports. Missing feeds are reported as
 unavailable; no articles or probabilities are fabricated. Regression checks:

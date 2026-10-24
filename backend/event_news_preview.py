@@ -18,6 +18,7 @@ import event_topic_matcher
 import event_direction
 import event_forecasts
 import event_outcome_data
+import event_series_forecasts
 
 _TOPICS={
  'Geopolitics': {'Conflict risk':('conflict escalation ceasefire regional security','conflict escalation ceasefire stability'),
@@ -104,13 +105,20 @@ def fetch(query,focus):
   rows.append({'title':title,'url':link,'source':origin,'published_at':when.isoformat(),'description':desc})
  return rows
 
+def _forecast(category,factor,focus,horizon,basis,now):
+ model=event_forecasts.forecast(category,factor,focus,horizon,basis,now)
+ if model['status']=='REFERENCE_ESTIMATE_AVAILABLE':return model
+ research=event_series_forecasts.forecast(category,factor,focus,horizon,basis,now)
+ return research if research.get('status')=='RESEARCH_ESTIMATE_AVAILABLE' else model
+
+
 def _with_forecast(result, basis, now):
  # Model changes and expiry are checked even when the news snapshot is cached.
  result=json.loads(json.dumps(result))
  result['basis']=basis
  result['outcome_history']=event_outcome_data.coverage(result['category'],result['factor'],result['focus'])
- result['scenario_forecast']=event_forecasts.forecast(result['category'],result['factor'],result['focus'],result['horizon'],basis,now)
- if result['scenario_forecast']['status']=='REFERENCE_ESTIMATE_AVAILABLE' and result['status']=='UNAVAILABLE':
+ result['scenario_forecast']=_forecast(result['category'],result['factor'],result['focus'],result['horizon'],basis,now)
+ if result['scenario_forecast']['status'] in ('REFERENCE_ESTIMATE_AVAILABLE','RESEARCH_ESTIMATE_AVAILABLE') and result['status']=='UNAVAILABLE':
   result['status']='FORECAST_AVAILABLE'
  return result
 
@@ -132,8 +140,8 @@ def analyze(category,factor,focus='',horizon='30 days',now=None,basis='END_STATE
  try:rows,coverage=event_feed_sources.retrieve(terms,focus,factor=factor,lookback_days=lookback)
  except event_feed_sources.FeedError as exc:
   # A reviewed historical baseline does not depend on today's news transport.
-  forecast=event_forecasts.forecast(category,factor,focus,horizon,basis,now)
-  if forecast['status']!='REFERENCE_ESTIMATE_AVAILABLE':
+  forecast=_forecast(category,factor,focus,horizon,basis,now)
+  if forecast['status'] not in ('REFERENCE_ESTIMATE_AVAILABLE','RESEARCH_ESTIMATE_AVAILABLE'):
    raise Unavailable(str(exc),coverage=getattr(exc,'coverage',None)) from exc
   rows=[]
   coverage={**(getattr(exc,'coverage',None) or {}),'feed_successes':0,'status':'UNAVAILABLE','reason_code':str(exc)}

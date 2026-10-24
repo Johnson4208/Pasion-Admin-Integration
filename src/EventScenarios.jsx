@@ -1,7 +1,7 @@
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
 import {usePreferences} from './Preferences';
-import {HORIZONS, queryKey, readStudies, reviewedProbability, referenceForecast, studySnapshot, evidenceScore, sourceUrl} from './eventScenarios.js';
+import {HORIZONS, queryKey, readStudies, referenceForecast, seriesForecast, studySnapshot, evidenceScore, sourceUrl} from './eventScenarios.js';
 import EventScenarioComparison from './EventScenarioComparison.jsx';
 import EventSourceStatus from './EventSourceStatus.jsx';
 import './event-scenarios.scss';
@@ -98,6 +98,10 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
   const [savedView, setSavedView] = useState(false);
   const [evidence, setEvidence] = useState(null);
   const [notice, setNotice] = useState('');
+  const [supportOpen,setSupportOpen] = useState(false);
+  const [loadingMode,setLoadingMode] = useState('');
+  const [forecastOptions,setForecastOptions] = useState([]);
+  const [optionsError,setOptionsError] = useState('');
   const key = storageKey+'-event-research';
   const [studies, setStudies] = useState(() => readStudies(key));
   const [savedOnly, setSavedOnly] = useState(false);
@@ -105,6 +109,23 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
   const archiveRef = useRef(null);
   const reportRef = useRef(null);
   const term = HORIZONS.long.some(([value]) => value === query.horizon) ? 'long' : 'short';
+
+  useEffect(() => {
+    const controller=new AbortController();
+    let disposed=false;
+    const timeout=setTimeout(() => controller.abort(),15000);
+    fetch('/api/research/events/forecast-options',{credentials:'same-origin',signal:controller.signal})
+      .then(async response => {
+        if (!response.ok) throw Error();
+        const data=await response.json();
+        if (data?.version !== 1 || !Array.isArray(data.profiles) || data.profiles.some(profile => !profile ||
+            ['id','category','factor','focus'].some(key => typeof profile[key] !== 'string') ||
+            !Array.isArray(profile.supported_horizons) || profile.supported_horizons.some(horizon => typeof horizon !== 'string'))) throw Error();
+        if (!controller.signal.aborted) setForecastOptions(data.profiles.map(profile => ({...profile,label:typeof profile.label === 'string' ? profile.label : profile.factor+' · '+profile.focus})));
+      }).catch(() => {if (!disposed) setOptionsError('Available forecast questions could not be loaded. You can still calculate the selected question or retry later.');})
+      .finally(() => clearTimeout(timeout));
+    return () => {disposed=true;clearTimeout(timeout);controller.abort();};
+  },[]);
 
   function cancelRequest() {
     request.current.controller?.abort();
@@ -119,7 +140,7 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
 
   function formatDate(value) {
     const date = new Date(value);
-    return value && Number.isFinite(date.valueOf()) ? date.toLocaleString(language, {dateStyle:'medium', timeStyle:'short'}) : t('Date unavailable');
+    return value && Number.isFinite(date.valueOf()) ? /^\d{4}-\d{2}-\d{2}$/.test(value) ? date.toLocaleDateString(language, {dateStyle:'medium',timeZone:'UTC'}) : date.toLocaleString(language, {dateStyle:'medium', timeStyle:'short'}) : t('Date unavailable');
   }
   function duration(value) {
     return t(Object.values(HORIZONS).flat().find(([key]) => key === value)?.[1] || value || 'Date unavailable');
@@ -128,6 +149,7 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
     cancelRequest();
     setQuery(current => ({...current, ...update}));
     setResult(null); setSavedView(false); setLoading(false); setError(''); setErrorCoverage(null); setEvidence(null); setNotice('');
+    setSupportOpen(false);
   }
   async function runAnalysis(event) {
     event?.preventDefault();
@@ -138,6 +160,7 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
     const id = request.current.id;
     request.current.controller = controller;
     setLoading(true); setError(''); setErrorCoverage(null); setEvidence(null); setNotice(''); setSavedView(false);
+    setSupportOpen(true); setLoadingMode('evidence');
     const timeout = setTimeout(() => controller.abort(), 25000);
     try {
       const response = await fetch('/api/research/events/live?'+new URLSearchParams(requested), {credentials:'same-origin', signal:controller.signal});
@@ -160,6 +183,38 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
       if (request.current.id === id) {request.current.controller = null; setLoading(false);}
     }
   }
+  async function runForecast(event) {
+    event?.preventDefault();
+    if (loading) return;
+    cancelRequest();
+    const requested={...query,focus:query.focus.trim() || 'World'};
+    const controller=new AbortController(), id=request.current.id;
+    request.current.controller=controller;
+    setLoading(true);setLoadingMode('forecast');setError('');setErrorCoverage(null);setEvidence(null);setNotice('');setSavedView(false);setSupportOpen(false);
+    const timeout=setTimeout(() => controller.abort(),60000);
+    try {
+      const response=await fetch('/api/research/events/forecast',{method:'POST',credentials:'same-origin',signal:controller.signal,
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(requested)});
+      const data=await response.json();
+      if (request.current.id !== id) return;
+      if (!response.ok) throw Error(response.status === 401 ? 'Your session has expired. Sign in again.' : response.status === 400 ?
+        'Check the forecast question and horizon, then try again.' : 'The forecast could not be prepared. Please try again.');
+      if (data?.version !== 1 || queryKey(data) !== queryKey(requested) || !Array.isArray(data.items) ||
+          data.items.some(item => !item || typeof item !== 'object') ||
+          !Array.isArray(data.dynamic_scenarios?.ranked_scenarios) ||
+          data.dynamic_scenarios.ranked_scenarios.some(row => !row || typeof row.id !== 'string' || !Array.isArray(row.sources)) ||
+          !data.scenario_forecast ||
+          !['FORECAST_AVAILABLE','UNAVAILABLE'].includes(data.status)) throw Error('The forecast response did not match this question. Please try again.');
+      setResult(data);
+    } catch (failure) {
+      if (request.current.id !== id) return;
+      setError(failure.name === 'AbortError' ? 'Preparing the forecast timed out. Try again; the earlier report has not changed.' :
+        failure instanceof TypeError || failure instanceof SyntaxError ? 'The forecast could not be prepared. Please try again.' : failure.message);
+    } finally {
+      clearTimeout(timeout);
+      if (request.current.id === id) {request.current.controller=null;setLoading(false);}
+    }
+  }
   function persist(next, success) {
     try {
       localStorage.setItem(key, JSON.stringify(next));
@@ -168,7 +223,7 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
     } catch {setNotice('Your browser could not save this report. Free up storage and try again.'); return false;}
   }
   const currentReport = result && queryKey(result) === queryKey(query);
-  const canSave = currentReport && (result.status === 'EVIDENCE_AVAILABLE' || !!referenceForecast(result)) && !savedView && !loading && !error;
+  const canSave = currentReport && (result.status === 'EVIDENCE_AVAILABLE' || !!referenceForecast(result) || !!seriesForecast(result)) && !savedView && !loading && !error;
   function saveResearch() {
     if (!canSave) return;
     const same = studies.find(s => s.snapshot && queryKey(s.snapshot) === queryKey(result) && s.snapshot.generated_at === result.generated_at);
@@ -182,6 +237,7 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
     if (!snapshot) {setNotice('This older entry has no report content. Run a new analysis.'); return;}
     cancelRequest(); setLoading(false); setError(''); setErrorCoverage(null); setNotice(''); setEvidence(null);
     setResult(snapshot); setSavedView(true);
+    setSupportOpen(!seriesForecast(snapshot) && !referenceForecast(snapshot));
     requestAnimationFrame(() => reportRef.current?.scrollIntoView({block:'start', behavior:'instant'}));
   }
   function exportReport() {
@@ -191,10 +247,22 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
   }
 
   const allScenarios = result?.dynamic_scenarios?.ranked_scenarios?.filter(s => s.horizon_eligible !== false) || [];
-  const ranked = allScenarios.filter(s => evidenceScore(s) !== null || reviewedProbability(result,s.id) !== null);
-  const forecast = referenceForecast(result);
-  const invalidForecast = result?.scenario_forecast?.status === 'REFERENCE_ESTIMATE_AVAILABLE' && !forecast;
-  const hasReviewedProbabilities = allScenarios.some(s => reviewedProbability(result,s.id) !== null);
+  const ranked = allScenarios.filter(s => evidenceScore(s) !== null);
+  const forecast = seriesForecast(result) || referenceForecast(result);
+  const invalidForecast = ['REFERENCE_ESTIMATE_AVAILABLE','RESEARCH_ESTIMATE_AVAILABLE'].includes(result?.scenario_forecast?.status) && !forecast;
+  const newsRequested = result && result.evidence_status !== 'NOT_REQUESTED';
+  const selectedProfile=forecastOptions.find(profile => profile.category === query.category && profile.factor === query.factor && profile.focus.toLowerCase() === (query.focus.trim() || 'World').toLowerCase());
+  const forecastStatus=result?.scenario_forecast?.status;
+  const unavailableMessage={
+    UNSUPPORTED_CONTEXT:'This question needs a measurable outcome definition and historical coverage before its probabilities can be estimated.',
+    UNSUPPORTED_HORIZON:'The available history does not support this forecast horizon. Choose a supported horizon or another question.',
+    INSUFFICIENT_HISTORY:'There are not enough completed historical periods to estimate and check this full outcome group.',
+    SOURCE_UNAVAILABLE:'The historical source could not be reached. Retry the calculation when the source is available.',
+    STALE_SOURCE:'The latest source observation is too old for a current estimate. Newer historical data is needed.',
+    RESEARCH_NOT_PREPARED:'Calculate this question to collect its historical series and prepare a research estimate.',
+  }[forecastStatus] || 'This question needs a measurable outcome definition and historical coverage before its probabilities can be estimated.';
+  const missingLabels={MEASURABLE_OUTCOME_DEFINITION:'A measurable, complete outcome definition',SOURCE_DATA:'A connected historical source',HISTORICAL_MODEL:'A historical model for this question',END_STATE_BASIS:'Select the end-of-period probability basis',SUPPORTED_HORIZON:'A supported forecast horizon',COMPATIBLE_MEASUREMENT_FREQUENCY:'A horizon compatible with the source frequency',FRESH_SOURCE_OBSERVATION:'A newer source observation',AT_LEAST_20_TRAINING_AND_10_HOLDOUT_PERIODS:'At least 20 training periods and 10 later evaluation periods',PREPARE_RESEARCH_ESTIMATE:'Calculate the research estimate',RETRY_PREPARATION_LATER:'Retry when the source is available',VALID_SOURCE_DATA_AND_WRITABLE_PRIVATE_STORE:'Valid source data and a writable private store'};
+  const missingRequirements = Array.isArray(result?.scenario_forecast?.missing_requirements) ? result.scenario_forecast.missing_requirements.filter(code => Object.hasOwn(missingLabels,code)) : [];
   const articles = result?.items || [];
   const localArticles = articles.filter(s => !['EXTERNAL_CONTEXT','UNVERIFIED_SCOPE'].includes(s.geographic_relation));
   const directionCounts = [localArticles.filter(s => s.direction_status === 'DIRECTIONAL' && s.direction < 0).length,
@@ -203,7 +271,6 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
 
   function renderScenario(scenario, index) {
     const score = evidenceScore(scenario);
-    const probability = reviewedProbability(result, scenario.id);
     return <article className="ev-scenario" key={scenario.id} data-scenario={scenario.id}>
       <span className="ev-rank">{String(index+1).padStart(2,'0')}</span>
       <div className="ev-scenario-copy"><h3>{t(scenario.title)}</h3><p>{t(scenario.definition)}</p>
@@ -212,43 +279,62 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
       <div className="ev-score" data-tone={score > 0 ? 'positive' : score < 0 ? 'negative' : 'neutral'}>
         <strong>{score === null ? '—' : (score > 0 ? '+' : '')+score}</strong><span>{t('Evidence balance')}</span>
         {score !== null && <div className="ev-balance" aria-hidden="true"><i style={{width:Math.abs(score)/2+'%', insetInlineStart:(score < 0 ? 50-Math.abs(score)/2 : 50)+'%'}}/></div>}
-        {probability !== null ? <small>{t('Reviewed probability')}: {(probability*100).toFixed(1)}%</small> : <small>{t('Probability not estimated')}</small>}
       </div>
       <button type="button" className="ev-source-button" aria-label={t('View evidence: {title}', {title:t(scenario.title)})} onClick={() => setEvidence({scenario})}>{t('Evidence')} <Arrow up/></button>
     </article>;
   }
 
   return <div className="analytics-page event-scenarios-page events-workspace">
-    <header className="ev-intro"><div><span className="ev-kicker">{t('SCENARIO RESEARCH')}</span><h2>{t('A clearer view of what could change.')}</h2><p>{t('Compare possible paths with the reporting that supports or challenges them.')}</p></div>
+    <header className="ev-intro"><div><span className="ev-kicker">{t('SCENARIO PROBABILITIES')}</span><h2>{t('Compare end-of-period outcomes.')}</h2><p>{t('One question, one horizon, every outcome shown together.')}</p></div>
       <button type="button" className="ev-secondary ev-archive-jump" onClick={() => archiveRef.current?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'})}>{t('Saved reports')} <span>{studies.length}</span></button>
     </header>
-    <form className="ev-configuration" onSubmit={runAnalysis} aria-label={t('Research configuration')}>
+    <form className="ev-configuration" onSubmit={runForecast} aria-label={t('Research configuration')}>
       <label>{t('Category')}<select value={query.category} onChange={event => changeQuery({category:event.target.value, factor:categories[event.target.value][0]})}>{Object.keys(categories).map(x => <option value={x} key={x}>{t(x)}</option>)}</select></label>
       <label>{t('Factor')}<select value={query.factor} onChange={event => changeQuery({factor:event.target.value})}>{categories[query.category].map(x => <option value={x} key={x}>{t(x)}</option>)}</select></label>
       <label>{t('Region / entity')}<input value={query.focus} onChange={event => changeQuery({focus:event.target.value})} maxLength={70} list="event-region-hints" placeholder={t('World')}/><datalist id="event-region-hints">{['World','Asia','Southeast Asia','Vietnam','United States','Europe','Middle East'].map(x => <option value={x} key={x}/>)}</datalist></label>
       <label>{t('Research horizon')}<select aria-label={t('Research horizon')} value={query.horizon} onChange={event => changeQuery({horizon:event.target.value})}>{Object.entries(HORIZONS).map(([group, values]) => <optgroup label={t(group === 'short' ? 'Short-term' : 'Long-term')} key={group}>{values.map(([value,label]) => <option value={value} key={value}>{t(label)}</option>)}</optgroup>)}</select></label>
       <label>{t('Probability basis')}<select aria-label={t('Probability basis')} value={query.basis} onChange={event => changeQuery({basis:event.target.value})}><option value="END_STATE">{t('State at the end of the period')}</option><option value="OCCURRENCE">{t('Occurs at least once during the period')}</option></select></label>
-      <button type="submit" className="ev-primary" disabled={loading}>{loading ? t('Analyzing…') : t('Analyze evidence')} <Arrow/></button>
-      <p className="ev-configuration-note">{t('The horizon sets your research context. Scores describe recent reporting, not the chance of an event by that date.')}</p>
+      <div className="ev-forecast-actions"><button type="submit" className="ev-primary" disabled={loading}>{loading && loadingMode === 'forecast' ? t('Preparing probabilities…') : t('Calculate scenario probabilities')} <Arrow/></button>
+        <button type="button" className="ev-secondary" disabled={loading} onClick={() => runAnalysis()}>{loading && loadingMode === 'evidence' ? t('Analyzing…') : t('Analyze evidence')}</button></div>
+      <p className="ev-configuration-note">{t('Compare every defined outcome at the end of the selected period. Research estimates include uncertainty and retrospective checks; future calibration is not established.')}</p>
     </form>
     {error && <div className="ev-alert" role="alert"><strong>{t(error)}</strong>{result && <p>{t('Update failed. The previous report is shown below with its original date and sources.')}</p>}</div>}
     {notice && <p className="ev-save-notice" role="status">{t(notice)}</p>}
-    {!result && <div className="ev-source-standalone"><EventSourceStatus result={null} query={query} failedCoverage={errorCoverage?.coverage} t={t} formatDate={formatDate}/></div>}
-    {result && errorCoverage && <div className="ev-source-standalone"><EventSourceStatus result={null} query={errorCoverage.context} failedCoverage={errorCoverage.coverage} showArchive={false} t={t} formatDate={formatDate}/></div>}
     <section ref={reportRef} className="ev-report" aria-label={t('Scenario research report')} aria-busy={loading}>
-      {loading && <div className="ev-loading" role="status"><span className="ev-spinner" aria-hidden="true"/><div><strong>{t('Gathering the evidence')}</strong><p>{t('Checking relevance, dates and opposing reports. You can change the filters to start over.')}</p></div></div>}
-      {!result ? <div className="ev-start"><ResearchIcon/><span className="ev-kicker">{t(loading ? 'RESEARCH IN PROGRESS' : 'START WITH A QUESTION')}</span><h3>{t(loading ? 'Your evidence report is taking shape.' : 'What could change the outlook?')}</h3><p>{t('Choose a factor and region, then analyze the available reporting. Each pathway will show supporting and challenging evidence.')}</p><div className="ev-start-example"><span>{t('For example')}</span><button type="button" onClick={() => changeQuery({category:'Economy', factor:'Inflation', focus:'Vietnam', horizon:'30 days'})}>{t('Inflation in Vietnam')} <Arrow/></button><button type="button" onClick={() => changeQuery({category:'Energy', factor:'Oil supply', focus:'World', horizon:'30 days'})}>{t('Global oil supply')} <Arrow/></button></div></div> : <>
-        <header className="ev-report-header"><div><span className="ev-kicker">{t(savedView ? 'SAVED REPORT' : error ? 'PREVIOUS REPORT' : 'EVIDENCE OUTLOOK')}</span><h2>{t(result.factor)} <span>·</span> {t(result.focus || 'World')}</h2><p>{t('Research horizon')}: {duration(result.horizon)} <span>·</span> {formatDate(result.generated_at)}</p><p>{t((result.basis || 'END_STATE') === 'END_STATE' ? 'State at the end of the period' : 'Occurs at least once during the period')}</p></div>
+      {loading && <div className="ev-loading" role="status"><span className="ev-spinner" aria-hidden="true"/><div><strong>{t(loadingMode === 'forecast' ? 'Preparing the complete probability group' : 'Gathering the evidence')}</strong><p>{t(loadingMode === 'forecast' ? 'Collecting the historical series, resolving completed periods and checking later outcomes.' : 'Checking relevance, dates and opposing reports. You can change the filters to start over.')}</p></div></div>}
+      {result && <>
+        <header className="ev-report-header"><div><span className="ev-kicker">{t(savedView ? 'SAVED REPORT' : error ? 'PREVIOUS REPORT' : forecast ? 'PROBABILITY OUTLOOK' : 'EVIDENCE OUTLOOK')}</span><h2>{t(result.factor)} <span>·</span> {t(result.focus || 'World')}</h2><p>{t('Research horizon')}: {duration(result.horizon)} <span>·</span> {formatDate(result.generated_at)}</p><p>{t((result.basis || 'END_STATE') === 'END_STATE' ? 'State at the end of the period' : 'Occurs at least once during the period')}</p></div>
           <div className="ev-report-actions"><button type="button" className="ev-secondary" disabled={!articles.length} onClick={() => setEvidence({scenario:null})}>{t('All sources')} <Arrow up/></button>
             {savedView ? <button type="button" className="ev-secondary" onClick={exportReport}>{t('Export report')}</button> : <button type="button" className="ev-primary ev-save-button" disabled={!canSave} onClick={saveResearch}>{t('Save report')}</button>}
           </div></header>
         {savedView && <div className="ev-saved-banner"><span>{t(result.legacy_snapshot ? 'Older saved report. Experimental percentages are hidden; run a new analysis for the current evidence method.' : 'You are viewing a saved snapshot. Its sources and date have not been refreshed.')}</span><button type="button" onClick={() => changeQuery({category:categories[result.category] ? result.category : query.category, factor:result.factor, focus:result.focus, horizon:result.horizon, basis:result.basis || 'END_STATE'})}>{t('Use these settings')} <Arrow/></button></div>}
-          <section className="ev-probability-note" aria-label={t('Model and score')}><span className="ev-small-icon" aria-hidden="true">i</span><div><h3>{t(forecast ? 'Historical reference estimates' : hasReviewedProbabilities ? 'Reviewed model probabilities' : 'Probability is not available')}</h3><p>{t(forecast ? 'All defined outcomes are compared below using the same historical sample and horizon. Evidence pathways remain a separate research measure.' : hasReviewedProbabilities ? 'Reviewed model probabilities and evidence balance are separate measures.' : 'There is no validated model for this event and horizon. Headline sentiment cannot establish the chance of an outcome.')}</p></div>
-            <details><summary>{t('How to read the score')}</summary><p>{t('Evidence balance compares weighted supporting and challenging stories, from −100 to +100. Positive means more support; negative means more challenge. Unclear or external context adds no directional support.')}</p></details>
-          </section>
-        {invalidForecast && <p className="ev-comparison-invalid" role="alert">{t('This probability set is incomplete or invalid. All estimates are withheld together; no partial distribution is shown.')}</p>}
-        {forecast && <EventScenarioComparison key={forecast.family_id+forecast.definition_version+queryKey(result)} model={forecast} t={t} language={language} formatDate={formatDate}/>}
-
+      </>}
+      {invalidForecast && <p className="ev-comparison-invalid" role="alert">{t('This probability set is incomplete or invalid. All estimates are withheld together; no partial distribution is shown.')}</p>}
+      {forecast ? <EventScenarioComparison recording={result.forecast_recording} key={forecast.family_id+forecast.definition_version+queryKey(result)} model={forecast} t={t} language={language} formatDate={formatDate}/> :
+        <section className="ev-forecast-unavailable" aria-label={t('Forecast readiness')}>
+          <span className="ev-kicker">{t(result ? 'FORECAST STATUS' : 'START WITH A MEASURABLE QUESTION')}</span>
+          <h3>{t(result ? 'Probability is not available' : 'Compare the complete outcome group')}</h3>
+          <p>{t(result ? unavailableMessage : selectedProfile ? 'The selected question has a public historical series. Calculate it to prepare an estimate and inspect its limitations.' :
+            'This question needs a measurable outcome definition and historical coverage before its probabilities can be estimated.')}</p>
+          {!!missingRequirements.length && <div className="ev-missing-requirements"><h4>{t('Still needed for this question')}</h4><ul>{missingRequirements.map(code => <li key={code}>{t(missingLabels[code])}</li>)}</ul></div>}
+          {query.basis === 'OCCURRENCE' && <p>{t('The automatic research estimator currently covers end-of-period states. Supporting news remains available for occurrence questions.')}</p>}
+          {selectedProfile && <p>{t('Available horizons')}: {selectedProfile.supported_horizons.map(duration).join(' · ')}</p>}
+          {optionsError && <p className="ev-options-error">{t(optionsError)}</p>}
+          {!!forecastOptions.length && <div className="ev-available-questions"><h4>{t('Questions with an automatic data workflow')}</h4><p>{t('Choosing a question changes the factor and region explicitly. Your current question is not replaced automatically.')}</p>
+            <div>{forecastOptions.map(profile => <button type="button" className="ev-secondary" key={profile.id} onClick={() => changeQuery({category:profile.category,factor:profile.factor,focus:profile.focus,
+              horizon:profile.supported_horizons.includes(query.horizon) ? query.horizon : profile.supported_horizons[0] || query.horizon,basis:'END_STATE'})}>{t(profile.label)} <Arrow/></button>)}</div>
+          </div>}
+        </section>}
+      <details className="ev-supporting-research" open={supportOpen} onToggle={event => setSupportOpen(event.currentTarget.open)}>
+        <summary>{t('Supporting research and sources')}<span>{t('News, evidence pathways and stored reporting')}</span></summary>
+        {!result || !newsRequested ? <>
+          <div className="ev-start"><ResearchIcon/><span className="ev-kicker">{t('SUPPORTING RESEARCH')}</span><h3>{t('What could change the outlook?')}</h3>
+            <p>{t('Collect supporting news to inspect recent reporting. News scores do not numerically adjust the historical estimates.')}</p>
+            <button type="button" className="ev-secondary" disabled={loading} onClick={() => runAnalysis()}>{t('Collect supporting news')} <Arrow/></button>
+          </div>
+          <div className="ev-source-standalone"><EventSourceStatus result={null} query={query} failedCoverage={errorCoverage?.coverage} t={t} formatDate={formatDate}/></div>
+        </> : <>
+          {errorCoverage && <div className="ev-source-standalone"><EventSourceStatus result={null} query={errorCoverage.context} failedCoverage={errorCoverage.coverage} showArchive={false} t={t} formatDate={formatDate}/></div>}
         <div className="ev-report-body"><div className="ev-main-column">
           <div className="ev-list-heading"><h3>{t('Supporting research pathways')}</h3><span>{t('Evidence balance: −100 to +100')}</span></div>
           {!ranked.length && <div className="ev-no-evidence"><ResearchIcon/><h3>{t(articles.length ? 'Not enough direct evidence to rank these paths.' : 'No recent, relevant reporting was found.')}</h3><p>{t(articles.length ? 'The sources below are context or have unclear direction. They are available to read, but do not establish a score.' : 'Try a broader region or a different factor. No baseline score or probability has been invented.')}</p></div>}
@@ -256,9 +342,9 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
           <p className="ev-list-note">{t('Paths can overlap. Evidence balance is not a probability and does not add up to 100.')}</p>
         </div>
         <aside className="ev-insights" aria-label={t('Research context')}>
-          <EventSourceStatus key={queryKey(result)} result={result} query={query} t={t} formatDate={formatDate}/>
+          <EventSourceStatus key={queryKey(result)} result={newsRequested ? result : null} query={query} t={t} formatDate={formatDate}/>
           <section className="ev-history-summary"><span className="ev-kicker">{t('OUTCOME DATA')}</span><h3>{t('Historical outcome coverage')}</h3>
-            {forecast && <p>{t('The connected model has its own reviewed history. Public collection status below is separate.')}</p>}
+            {forecast && <p>{t('The connected model has its own historical training data. Public collection status below is separate.')}</p>}
             <p>{t(result.outcome_history?.status === 'COLLECTED_NEEDS_OUTCOME_REVIEW' ? 'Observations have been collected. Resolution rules and historical availability still need review before they can validate probabilities.' : result.outcome_history?.profiles?.length ? 'Outcome sources are mapped, but no reviewed history has been collected for this report.' : 'No public collection profile is mapped to this context.')}</p>
             {result.outcome_history?.profiles?.map(profile => <div key={profile.id} className="ev-history-profile"><strong>{profile.provider}</strong><span>{profile.metric} · {t({ANNUAL:'Annual',MONTHLY:'Monthly',QUARTERLY:'Quarterly',WEEKLY:'Weekly',DAILY:'Daily',EVENT_INTERVAL:'Event intervals'}[profile.frequency] || profile.frequency)}</span><span>{t('{count} observations collected',{count:profile.observation_count || 0})}</span><p>{t(profile.measurement)}</p></div>)}
             <p>{t('A historical observation date is not its publication date. Latest revised values are not point-in-time training data.')}</p>
@@ -269,7 +355,8 @@ export default function EventScenarios({storageKey = 'pasion-event-scenarios'}) 
           </section>
           <section className="ev-window-note"><h3>{t('A window into recent reporting')}</h3><p>{result.horizon_info?.news_lookback_days ? t('This report checks news from the past {days} days.', {days:result.horizon_info.news_lookback_days}) : t('The news window was not recorded in this older report.')}</p><p>{t('Longer research horizons require additional historical evidence and an outcome model.')}</p>{result.coverage?.status === 'UNAVAILABLE' && <p>{t('Current news feeds are unavailable. The historical reference estimates do not use current news.')}</p>}{result.coverage?.requests != null && <small>{t('{success} of {total} feed requests succeeded', {success:result.coverage.feed_successes || 0, total:result.coverage.requests})}</small>}</section>
         </aside></div>
-      </>}
+        </>}
+      </details>
     </section>
     <section ref={archiveRef} className="ev-archive" aria-label={t('Saved research reports')}>
       <header><div><span className="ev-kicker">{t('YOUR NOTEBOOK')}</span><h2>{t('Saved research')}</h2><p>{t('Snapshots stored on this browser, ready to revisit.')}</p></div><div className="ev-archive-filter" role="group" aria-label={t('Filter saved reports')}><button type="button" aria-pressed={!savedOnly} onClick={() => setSavedOnly(false)}>{t('All')}</button><button type="button" aria-pressed={savedOnly} onClick={() => setSavedOnly(true)}>{t('Bookmarked')}</button></div></header>

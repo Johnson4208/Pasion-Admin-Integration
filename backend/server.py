@@ -34,6 +34,9 @@ import event_research
 import event_news_preview
 import event_horizons
 import event_agent_store
+import event_forecasts
+import event_series_forecasts
+import event_forecast_ledger
 import news_evidence
 import finance_ingestion
 import watch_events
@@ -112,6 +115,65 @@ def account_profile(email):
     return {'name': row[0], 'email': email.casefold()} if row else None
 
 class Handler(BaseHTTPRequestHandler):
+    def event_forecast_api(self):
+        if not self.current_session():
+            self.respond(401, {'message': 'Please sign in again.'})
+            return
+        address = urlparse(self.path).path
+        try:
+            if self.command == 'GET':
+                if address.endswith('/forecast-options'):
+                    self.respond(200, {'version': 1, 'profiles': event_series_forecasts.options(),
+                                      'policy': 'SOURCE_BACKED_RESEARCH_NOT_PROSPECTIVELY_CALIBRATED'})
+                else:
+                    self.respond(200, {'version': 1, **event_forecast_ledger.summary()})
+                return
+            size = int(self.headers.get('Content-Length', '0'))
+            if not 0 < size <= 10000:
+                raise ValueError()
+            payload = json.loads(self.read_document_body(size))
+            fields = {'category', 'factor', 'focus', 'horizon', 'basis'}
+            if not isinstance(payload, dict) or set(payload) - fields:
+                raise ValueError()
+            context = {key: payload.get(key, 'END_STATE' if key == 'basis' else 'World' if key == 'focus' else '')
+                       for key in fields}
+            if any(not isinstance(value, str) for value in context.values()):
+                raise ValueError()
+            context['focus'] = context['focus'].strip() or 'World'
+            if context['factor'] not in event_news_preview._TOPICS.get(context['category'], {}):
+                raise ValueError()
+            if context['basis'] not in event_forecasts.BASES:
+                raise ValueError()
+            horizon_info = event_horizons.info(context['horizon'])
+            event_news_preview.event_feed_sources.geography(context['focus'])
+            model = event_forecasts.forecast(**context)
+            if model.get('status') != 'REFERENCE_ESTIMATE_AVAILABLE':
+                model = event_series_forecasts.prepare(**context)
+            ready = model.get('status') in ('REFERENCE_ESTIMATE_AVAILABLE', 'RESEARCH_ESTIMATE_AVAILABLE')
+            recording = {'status': 'NOT_RECORDED'}
+            if model.get('status') == 'RESEARCH_ESTIMATE_AVAILABLE':
+                try:
+                    recording = event_forecast_ledger.record(model)
+                except (ValueError, OSError, sqlite3.Error):
+                    recording = {'status': 'RECORDING_UNAVAILABLE'}
+                else:
+                    try:
+                        event_forecast_ledger.resolve_due()
+                    except (ValueError, OSError, sqlite3.Error):
+                        recording['resolution_status'] = 'TEMPORARILY_UNAVAILABLE'
+            self.respond(200, {'version': 1, **context,
+                              'status': 'FORECAST_AVAILABLE' if ready else 'UNAVAILABLE',
+                              'generated_at': model.get('as_of') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                              'scenario_forecast': model, 'forecast_recording': recording,
+                              'horizon_info': horizon_info, 'evidence_status': 'NOT_REQUESTED',
+                              'items': [], 'outcomes': [], 'source_count': 0,
+                              'dynamic_scenarios': {'ranked_scenarios': []},
+                              'coverage': {'status': 'NOT_REQUESTED'}, 'calibrated_probability': False})
+        except (ValueError, KeyError, TypeError, AttributeError, DocumentError):
+            self.respond(400, {'message': 'Select a supported forecast question, region and horizon.'})
+        except (OSError, sqlite3.Error):
+            self.respond(503, {'message': 'Forecast preparation is temporarily unavailable. Existing data was preserved.'})
+
     def trade_outcomes_api(self):
         try:
             size=int(self.headers.get('Content-Length','0'))
@@ -849,6 +911,8 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError,TypeError,OverflowError):
                 self.respond(400,{'message':'Invalid event intelligence watch.'})
             return
+        if address in ('/api/research/events/forecast-options', '/api/research/events/forecast-history'):
+            self.event_forecast_api();return
         if address=='/api/research/events/live':
             if not self.current_session():
                 self.respond(401,{'message':'Please sign in again.'});return
@@ -945,6 +1009,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.policy_guard():
             return
+        if urlparse(self.path).path == '/api/research/events/forecast':
+            self.event_forecast_api();return
         if urlparse(self.path).path=='/api/trades/outcomes':
             self.trade_outcomes_api();return
         if urlparse(self.path).path in ('/api/admin/distribution/pools','/api/admin/distribution/candidates','/api/admin/distribution/transitions','/api/admin/distribution/shadow'):

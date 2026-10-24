@@ -128,3 +128,15 @@ html[data-theme=dark] {
 }
 @media(prefers-reduced-motion:reduce){.events-workspace,.events-evidence-dialog{*{scroll-behavior:auto!important;transition:none!important}.ev-spinner{animation:none}}}
 @media(max-width:700px){.events-workspace{.ev-source-standalone{grid-template-columns:1fr;padding:18px;gap:20px}.ev-collected-result select{font-size:16px}.ev-collected-actions .ev-secondary{font-size:11px;flex:1}.ev-collected-articles{max-height:440px}}}
+
+/* Keep probabilities and their definitions together; supporting reporting opens on request. */
+.events-workspace {
+  .ev-forecast-actions{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;grid-column:1/-1;.ev-primary{flex:1}.ev-secondary{flex-shrink:0}}
+  .ev-forecast-unavailable{padding:28px 26px;h3{font-size:20px;line-height:1.5;margin:7px 0 10px}p{font-size:13px;color:var(--ev-muted);line-height:1.85;max-width:85ch;margin-top:8px}}
+  .ev-missing-requirements{margin-top:16px;padding:14px 18px;background:var(--ev-tint);border:1px solid var(--ev-line);border-radius:7px;h4{font-size:12px}ul{padding-inline-start:20px;color:var(--ev-muted);font-size:12px;line-height:1.9;margin-bottom:0}}
+  .ev-available-questions{border-top:1px solid var(--ev-line);margin-top:23px;padding-top:20px;h4{font-size:13px}>div{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.ev-secondary{min-height:44px}}
+  .ev-options-error{color:var(--ev-challenge)!important}
+  .ev-supporting-research{border-top:1px solid var(--ev-line);>summary{padding:18px 26px;cursor:pointer;color:var(--ev-blue);font-size:13px;font-weight:650;min-height:44px;box-sizing:border-box;span{display:block;font-size:11px;color:var(--ev-muted);font-weight:400;margin:4px 0 0 16px}}.ev-source-standalone{border:0;border-radius:0}.ev-start{border-top:1px solid var(--ev-line)}}
+  .ev-forecast-context{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:16px 18px;background:var(--ev-tint);border:1px solid var(--ev-line);border-radius:7px;margin-bottom:14px;>div{min-width:0;span,small{display:block;font-size:10px;color:var(--ev-muted)}strong{display:block;font-size:13px;margin:4px 0;overflow-wrap:anywhere}}p{grid-column:1/-1;font-size:11px;color:var(--ev-muted)}[data-quality=LIMITED]{color:var(--ev-challenge)}}
+}
+@media(max-width:650px){.events-workspace{.ev-forecast-unavailable{padding:22px 18px}.ev-supporting-research>summary{padding:18px}.ev-forecast-context{grid-template-columns:1fr;gap:12px}.ev-available-questions>div{flex-direction:column}.ev-forecast-actions{flex-direction:column}}}

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {queryKey, reviewedProbability, referenceForecast, comparisonRows, evidenceScore, sourceUrl, studySnapshot, readStudies} from '../src/eventScenarios.js';
+import {queryKey, reviewedProbability, referenceForecast, seriesForecast, comparisonRows, evidenceScore, sourceUrl, studySnapshot, readStudies} from '../src/eventScenarios.js';
 
 test('query identity distinguishes filters while normalizing surrounding spaces and global focus', () => {
   const query = {category:'Economy',factor:'GDP growth',focus:' Vietnam ',horizon:'30 days'};
@@ -95,4 +95,39 @@ test('malformed archive entries are ignored without discarding valid reports', (
     globalThis.localStorage = {getItem:() => '{broken'};
     assert.deepEqual(readStudies('archive'),[]);
   } finally {globalThis.localStorage = original;}
+});
+
+const seriesFixture = () => JSON.parse(readFileSync(new URL('../tests/fixtures/event-series-forecast.json',import.meta.url),'utf8'));
+function seriesReport() {const scenario_forecast=seriesFixture();return {...scenario_forecast.context,scenario_forecast};}
+test('research estimates validate a complete normalized family and retain exact ties', () => {
+  const report=seriesReport(), model=seriesForecast(report);
+  assert.ok(model);
+  assert.equal(comparisonRows(model).length,5);
+  assert.equal(model.probabilities.fall,model.probabilities.rise);
+  assert.equal(referenceForecast(report),null);
+  assert.ok(Math.abs(Object.values(model.probabilities).reduce((sum,p) => sum+p,0)-1)<1e-10);
+  const alias=structuredClone(report);alias.focus='US';alias.scenario_forecast.context.focus='US';
+  assert.ok(seriesForecast(alias));
+});
+test('one invalid research outcome, provenance field, horizon, count or date withholds the entire group', () => {
+  const edits=[
+    m => {delete m.probabilities.fall;},m => {m.scenarios.pop();},m => {m.scenarios[1].id=m.scenarios[0].id;},
+    m => {m.context.focus='Vietnam';},m => {m.context.basis='OCCURRENCE';},m => {m.training_sample_count=19;},m => {m.holdout_sample_count=9;},
+    m => {m.probabilities.fall=.8;},m => {m.intervals.fall=[.9,1];},m => {m.training_counts.fall=20.5;},m => {m.training_counts.fall=21;},
+    m => {m.holdout_counts.fall=5;},m => {m.source.provider='UNVERIFIED';},m => {m.source.profile_id='wrong';},m => {m.source.source_urls=['javascript:alert(1)'];},
+    m => {m.source.retrieved_at='2030-01-01T00:00:00Z';},m => {m.source.retrieved_at='2026-10-23';},
+    m => {m.baseline.observation_at='2026-02-30';},m => {m.baseline.value=0;},m => {m.baseline_age_days=0;},m => {m.effective_duration_days=30;},
+    m => {m.forecast_origin_at='2026-10-23';},m => {m.maturity_at=m.forecast_origin_at;},m => {m.holdout_period_start=m.training_period_end;},
+    m => {m.expires_at=m.as_of;},m => {m.validation.brier_score=NaN;},m => {m.validation.quality='CALIBRATED';},
+    m => {m.change_unit='PERCENTAGE_POINTS';},m => {m.threshold_cuts=[-.2,-.1,.1,.25];},m => {m.news_adjusted=true;},m => {m.calibrated_probability=true;},
+  ];
+  for (const edit of edits) {const report=seriesReport();edit(report.scenario_forecast);assert.equal(seriesForecast(report),null);}
+});
+test('research-only snapshots with no articles preserve the whole distribution and source dates', () => {
+  const model=seriesFixture(), value={...model.context,scenario_forecast:model,status:'FORECAST_AVAILABLE',evidence_status:'NOT_REQUESTED',items:[],dynamic_scenarios:{ranked_scenarios:[]}};
+  const study={id:'model',...model.context,snapshot:value};
+  const restored=studySnapshot(study);
+  assert.deepEqual(restored.items,[]);
+  assert.deepEqual(seriesForecast(restored),model);
+  assert.equal(restored.evidence_status,'NOT_REQUESTED');
 });

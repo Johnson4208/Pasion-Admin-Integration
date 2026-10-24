@@ -5,6 +5,7 @@ on:
     paths:
       - 'backend/event_*.py'
       - 'backend/test_event*.py'
+      - 'backend/server.py'
       - 'src/EventScenarios.jsx'
       - 'src/EventScenarioComparison.jsx'
       - 'src/EventSourceStatus.jsx'
@@ -14,6 +15,7 @@ on:
       - 'src/event-scenarios.scss'
       - 'src/translations*.js'
       - 'src/HomePage.jsx'
+      - 'src/WorkspaceNavigation.jsx'
       - 'tests/f10.spec.js'
       - 'tests/news-collection.spec.js'
       - 'tests/fixtures/event-*.json'
@@ -24,6 +26,7 @@ on:
     paths:
       - 'backend/event_*.py'
       - 'backend/test_event*.py'
+      - 'backend/server.py'
       - 'src/EventScenarios.jsx'
       - 'src/EventScenarioComparison.jsx'
       - 'src/EventSourceStatus.jsx'
@@ -33,6 +36,7 @@ on:
       - 'src/event-scenarios.scss'
       - 'src/translations*.js'
       - 'src/HomePage.jsx'
+      - 'src/WorkspaceNavigation.jsx'
       - 'tests/f10.spec.js'
       - 'tests/news-collection.spec.js'
       - 'tests/fixtures/event-*.json'

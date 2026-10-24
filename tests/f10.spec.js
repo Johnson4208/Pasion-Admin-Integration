@@ -23,7 +23,7 @@ function report(overrides = {}) {
 }
 async function open(page) {
   await page.goto('/#event-scenarios');
-  await expect(page.getByRole('heading',{name:'A clearer view of what could change.'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Compare end-of-period outcomes.'})).toBeVisible();
 }
 async function analyze(page) {
   await page.getByRole('button',{name:'Analyze evidence',exact:true}).click();
@@ -32,6 +32,7 @@ async function analyze(page) {
 const reportRegion = page => page.getByRole('region',{name:'Scenario research report'});
 
 test.beforeEach(async({page}) => {
+  await page.route('**/api/research/events/forecast-options',r => r.fulfill({json:{version:1,profiles:[]}}));
   await page.route('**/api/session',r => r.fulfill({json:{authenticated:true,isAdmin:false,user:{name:'Event Reviewer',email:'event-reviewer@example.com'}}}));
   await page.route('**/api/research/company/**',r => r.fulfill({json:{status:'UNAVAILABLE'}}));
 });
@@ -39,7 +40,8 @@ test.beforeEach(async({page}) => {
 test('empty screen explains the workflow; score and full source trace do not expose experimental percentages',async({page}) => {
   await page.route('**/api/research/events/live?*',r => r.fulfill({json:report()}));
   await open(page);
-  await expect(page.getByText('What could change the outlook?',{exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Compare the complete outcome group',exact:true})).toBeVisible();
+  await expect(page.locator('.ev-supporting-research')).not.toHaveAttribute('open');
   await expect(page.locator('.ev-scenario')).toHaveCount(0);
   await analyze(page);
   await expect(page.locator('.ev-score strong')).toHaveText('+40');
@@ -166,9 +168,9 @@ test('Vietnamese translates the research, meaning of the score and source dialog
   await page.route('**/api/research/events/live?*',r => r.fulfill({json:report()}));
   await open(page);
   await page.getByRole('combobox',{name:'Language',exact:true}).first().selectOption('vi');
-  await expect(page.getByRole('heading',{name:'Hiểu rõ những thay đổi có thể xảy ra.'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'So sánh kết quả ở cuối kỳ.'})).toBeVisible();
   await page.getByRole('button',{name:'Phân tích bằng chứng',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Chưa có xác suất được kiểm định'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Chưa thể ước tính xác suất'})).toBeVisible();
   await page.getByRole('button',{name:'Xem bằng chứng: Cải thiện từng bước',exact:true}).click();
   await expect(page.getByRole('dialog')).toContainText('Các nguồn tác động đến điểm số như thế nào');
 });
@@ -262,7 +264,7 @@ test('the outcome family can change size and pending research paths remain visib
   await open(page);await analyze(page);
   await expect(page.getByRole('region',{name:'All scenario probabilities'}).locator('.ev-comparison-row')).toHaveCount(7);
   await expect(page.getByRole('heading',{name:'A path without current evidence'})).toBeVisible();
-  await expect(page.locator('[data-scenario=unobserved]')).toContainText('Probability not estimated');
+  await expect(page.locator('[data-scenario=unobserved] .ev-score strong')).toHaveText('—');
   await expect(page.locator('[data-scenario=unobserved]')).toBeVisible();
 });
 
@@ -391,9 +393,11 @@ test('changing the research context cancels an old archive request instead of re
     if(q.focus==='Vietnam')finished=true;
   });
   await open(page);
+  await page.locator('.ev-supporting-research > summary').click();
   await page.getByRole('button',{name:'Read collector archive',exact:true}).click();
   await expect.poll(()=>started).toBe(true);
   await page.getByLabel('Region / entity',{exact:true}).fill('Japan');
+  await page.locator('.ev-supporting-research > summary').click();
   await page.getByRole('button',{name:'Read collector archive',exact:true}).click();
   await expect(page.getByRole('link',{name:'Japan stored reporting ↗'})).toBeVisible();
   release();
@@ -410,6 +414,7 @@ test('archive states distinguish missing data, missing watch, sign-in failure an
   });
   await page.route('**/api/research/news',r => r.fulfill({json:{articles:[]}}));
   await open(page);
+  await page.locator('.ev-supporting-research > summary').click();
   const archive=page.getByRole('region',{name:'Previously collected reporting',exact:true});
   await archive.getByRole('button',{name:'Read collector archive',exact:true}).click();
   await expect(archive).toContainText('No collector archive is available in this version.');
@@ -433,5 +438,86 @@ test('Vietnamese mobile collection diagnostics keep unknown counts distinct from
   await status.getByText('Chi tiết thu thập và lọc tin',{exact:true}).click();
   await expect(status.locator('.ev-collection-details dl dd')).toHaveText(Array(7).fill('Chưa được ghi nhận'));
   await expect(page.getByRole('button',{name:'Mở kho tin của bộ thu thập',exact:true})).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+const seriesModel=() => referenceModel('event-series-forecast');
+const researchEnvelope=model => ({version:1,...model.context,status:'FORECAST_AVAILABLE',generated_at:model.as_of,
+  scenario_forecast:model,forecast_recording:{id:'synthetic-test-ledger',status:'PENDING'},evidence_status:'NOT_REQUESTED',
+  items:[],source_count:0,dynamic_scenarios:{ranked_scenarios:[]},coverage:{status:'NOT_REQUESTED'},calibrated_probability:false});
+async function mockResearchOptions(page) {
+  await page.route('**/api/research/events/forecast-options',r => r.fulfill({json:{version:1,profiles:[
+    {id:'us-volatility',label:'Equity volatility · United States',category:'Markets',factor:'Equity volatility',focus:'United States',supported_horizons:['1 day','3 days','7 days','30 days','90 days']},
+    {id:'us-mortgages',label:'Mortgage rates · United States',category:'Real Estate',factor:'Mortgage rates',focus:'United States',supported_horizons:['7 days','30 days','90 days']},
+  ]}}));
+}
+
+test('primary research calculation shows all outcomes with uncertainty, source dates and validation before optional news',async({page}) => {
+  await mockResearchOptions(page);let newsCalls=0,posted;
+  await page.route('**/api/research/events/live?*',r => {newsCalls++;return r.fulfill({json:report()});});
+  await page.route('**/api/research/events/forecast',r => {posted=r.request().postDataJSON();return r.fulfill({json:researchEnvelope(seriesModel())});});
+  await open(page);
+  await expect(page.getByLabel('Region / entity',{exact:true})).toHaveValue('Vietnam');
+  await page.getByRole('button',{name:'Equity volatility · United States',exact:true}).click();
+  await expect(page.getByLabel('Region / entity',{exact:true})).toHaveValue('United States');
+  await page.getByRole('button',{name:'Calculate scenario probabilities',exact:true}).click();
+  const comparison=page.getByRole('region',{name:'All scenario probabilities'});
+  await expect(comparison.locator('.ev-comparison-row')).toHaveCount(5);
+  await expect(comparison.locator('.ev-outcome-probability strong')).toHaveText(['5.2%','10.1%','69.4%','10.1%','5.2%']);
+  await expect(comparison).toContainText('Total before rounding: 100.0%');
+  await expect(comparison).toContainText('Current reference observation');
+  await expect(comparison).toContainText('Forecast origin');
+  await expect(comparison).toContainText('End of the selected period');
+  await expect(comparison).toContainText('This forecast was recorded before its end date');
+  await expect(page.locator('.ev-supporting-research')).not.toHaveAttribute('open');
+  expect(newsCalls).toBe(0);
+  expect(posted).toEqual(seriesModel().context);
+  await comparison.getByText('Model, history and validation',{exact:true}).click();
+  await expect(comparison).toContainText('Historical check only; future calibration not established');
+  await expect(comparison.getByRole('link',{name:'FRED ↗'})).toHaveAttribute('href','https://fred.stlouisfed.org/series/VIXCLS');
+  await page.getByRole('button',{name:'Save report',exact:true}).click();
+  await page.reload();
+  await page.getByRole('button',{name:'Open saved report: Equity volatility, United States'}).click();
+  await expect(comparison.locator('.ev-comparison-row')).toHaveCount(5);
+  await page.locator('.ev-supporting-research > summary').click();
+  await expect(page.getByRole('button',{name:'Collect supporting news',exact:true})).toBeVisible();
+  await expect(page.getByRole('region',{name:'News collection status',exact:true}).locator('.ev-collection-counts dd')).toHaveText(['Not recorded','Not recorded','Not recorded']);
+});
+
+test('unsupported questions retain their context and name every missing requirement without invented percentages',async({page}) => {
+  await mockResearchOptions(page);let posted;
+  await page.route('**/api/research/events/forecast',r => {
+    posted=r.request().postDataJSON();
+    return r.fulfill({json:{...researchEnvelope(seriesModel()),...posted,status:'UNAVAILABLE',scenario_forecast:{status:'UNSUPPORTED_CONTEXT',context:posted,
+      missing_requirements:['MEASURABLE_OUTCOME_DEFINITION','SOURCE_DATA','HISTORICAL_MODEL'],probabilities:null,scenarios:[]}}});
+  });
+  await open(page);await page.getByRole('button',{name:'Calculate scenario probabilities',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Probability is not available',exact:true})).toBeVisible();
+  await expect(page.locator('.ev-missing-requirements li')).toHaveText(['A measurable, complete outcome definition','A connected historical source','A historical model for this question']);
+  await expect(page.getByLabel('Region / entity',{exact:true})).toHaveValue('Vietnam');
+  await expect(page.getByRole('region',{name:'All scenario probabilities'})).toHaveCount(0);
+  expect(posted.focus).toBe('Vietnam');
+});
+
+test('invalid primary research distribution withholds every number together',async({page}) => {
+  await mockResearchOptions(page);const model=seriesModel();delete model.probabilities.fall;
+  await page.route('**/api/research/events/forecast',r => r.fulfill({json:researchEnvelope(model)}));
+  await open(page);await page.getByRole('button',{name:'Equity volatility · United States',exact:true}).click();
+  await page.getByRole('button',{name:'Calculate scenario probabilities',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('All estimates are withheld together');
+  await expect(page.getByRole('region',{name:'All scenario probabilities'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Save report',exact:true})).toBeDisabled();
+});
+
+test('Vietnamese mobile research estimates show uncertainty without overflow',async({page}) => {
+  await page.setViewportSize({width:390,height:844});await mockResearchOptions(page);
+  await page.route('**/api/research/events/forecast',r => r.fulfill({json:researchEnvelope(seriesModel())}));
+  await open(page);await page.getByRole('button',{name:'Equity volatility · United States',exact:true}).click();
+  await page.getByRole('combobox',{name:'Language',exact:true}).first().selectOption('vi');
+  await page.getByRole('button',{name:'Tính xác suất kịch bản',exact:true}).click();
+  const comparison=page.getByRole('region',{name:'Xác suất của toàn bộ kịch bản'});
+  await expect(comparison.locator('.ev-comparison-row')).toHaveCount(5);
+  await expect(comparison).toContainText('Khoảng 95%');
+  await expect(comparison).toContainText('Quan sát làm mốc hiện tại');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

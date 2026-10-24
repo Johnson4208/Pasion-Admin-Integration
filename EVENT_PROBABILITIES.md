@@ -30,13 +30,19 @@ their scores do not become probabilities for the model's outcome family.
 
 ## What is available now
 
-The comparison UI, model catalog reader, historical estimator, offline builder,
+The primary application now also offers automatic source-backed research estimates
+for explicitly supported quantitative questions. See
+[EVENT_SERIES_RESEARCH.md](EVENT_SERIES_RESEARCH.md) for collection, measurable
+end states, retrospective holdout checks, uncertainty and prospective tracking.
+These estimates do not claim future calibration or numerical conditioning on news.
+
+The reviewed model catalog reader, historical estimator, offline builder,
 validation gates, eight public-observation collection profiles and automated
 regressions are implemented. [EVENT_OUTCOME_SOURCES.md](EVENT_OUTCOME_SOURCES.md)
 records their coverage, live-access blocker and remaining source gaps. **No real model
-catalog or adjudicated historical event dataset is bundled.** Until a reviewed
-catalog covers the selected factor, region, horizon and basis, the live app
-withholds probabilities for the entire family. It does not fill missing
+catalog or adjudicated historical event dataset is bundled.** Outside supported
+automatic research questions, a reviewed catalog must cover the selected factor,
+region, horizon and basis before a family is displayed. The app does not fill missing
 probabilities with 50%, equal shares, or headline-derived percentages.
 
 The implemented estimator is a **historical reference-class baseline**. It
@@ -44,7 +50,8 @@ does not condition on today's news or promise that a future event behaves like
 the historical sample. A calibrated, news-conditioned forecast requires a
 separate model, point-in-time features, genuinely later evaluation and ongoing
 prospective monitoring. It has not been implemented or validated by this
-change. No numerical forecast for the user's current case has been established.
+catalog path. Generic Vietnam conflict-risk forecasting remains unsupported until
+its measurable definitions, sources and outcome history are established.
 
 ## Historical data and model definitions
 

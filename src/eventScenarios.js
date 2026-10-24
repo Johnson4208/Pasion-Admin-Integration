@@ -68,6 +68,75 @@ export function referenceForecast(result) {
   return model;
 }
 
+// Research estimates have a different, explicit contract from reviewed
+// catalogs. Validate the complete measurable end-state family before display.
+export function seriesForecast(result) {
+  const model = result?.scenario_forecast;
+  const object = value => value && typeof value === 'object' && !Array.isArray(value);
+  const text = value => typeof value === 'string' && !!value.trim() && value.length <= 4000;
+  const finite = value => typeof value === 'number' && Number.isFinite(value);
+  const instant = value => typeof value === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? Date.parse(value) : NaN;
+  const period = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value ? Date.parse(value) : NaN;
+  if (!object(model) || model.schema_version !== 2 || model.method !== 'RETROSPECTIVE_SERIES_REFERENCE_V1' ||
+      model.status !== 'RESEARCH_ESTIMATE_AVAILABLE' || !object(model.context) || model.context.basis !== 'END_STATE' ||
+      queryKey(model.context) !== queryKey(result) || model.news_adjusted !== false || model.calibrated_probability !== false ||
+      model.mutually_exclusive !== true || model.exhaustive !== true || model.interval_level !== .95 ||
+      ['family_id','definition_version','model_version','question','sampling_policy','change_unit'].some(key => !text(model[key])) ||
+      typeof model.dataset_sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(model.dataset_sha256)) return null;
+  if (!Number.isInteger(model.training_sample_count) || model.training_sample_count < 20 || model.training_sample_count > 100000 ||
+      !Number.isInteger(model.holdout_sample_count) || model.holdout_sample_count < 10 || model.holdout_sample_count > 100000 ||
+      model.validation?.status !== 'RETROSPECTIVE_HOLDOUT_ONLY' || !['LIMITED','RETROSPECTIVE_ONLY'].includes(model.validation.quality) ||
+      ['brier_score','log_loss','maximum_rate_error'].some(key => !finite(model.validation[key]) || model.validation[key] < 0) ||
+      model.validation.maximum_rate_error > 1) return null;
+  const asOf=instant(model.as_of), origin=instant(model.forecast_origin_at), maturity=instant(model.maturity_at), expiry=instant(model.expires_at);
+  const days=Number(model.context.horizon?.split(' ')[0]);
+  const trainingEnd=period(model.training_period_end), holdoutStart=period(model.holdout_period_start), holdoutEnd=period(model.holdout_period_end);
+  if (![asOf,origin,maturity,expiry,trainingEnd,holdoutStart,holdoutEnd].every(Number.isFinite) ||
+      !Object.values(HORIZONS).flat().some(([value]) => value === model.context.horizon) ||
+      !(trainingEnd < holdoutStart && holdoutStart <= holdoutEnd && holdoutEnd <= origin && origin <= asOf && asOf < expiry) ||
+      expiry-asOf > 86400000 || maturity-origin !== days*86400000) return null;
+  if (!object(model.baseline) || !finite(model.baseline.value) || !text(model.baseline.unit) ||
+      !Number.isFinite(period(model.baseline.observation_at)) || period(model.baseline.observation_at) > origin ||
+      !object(model.source) || model.source.provider !== 'FRED' || !text(model.source.metric) ||
+      !text(model.source.snapshot_id) || !Number.isFinite(instant(model.source.retrieved_at)) || instant(model.source.retrieved_at) > asOf ||
+      !Array.isArray(model.source.source_urls) || !model.source.source_urls.length || model.source.source_urls.some(url => !sourceUrl(url))) return null;
+  const sourceContexts = {VIXCLS:{category:'Markets',factor:'Equity volatility',profile:'us-volatility',cuts:[-.25,-.1,.1,.25],unit:'RELATIVE_CHANGE'},MORTGAGE30US:{category:'Real Estate',factor:'Mortgage rates',profile:'us-mortgages',cuts:[-.25,.25],unit:'PERCENTAGE_POINTS'}};
+  const expected=sourceContexts[model.source.metric];
+  if (!expected || model.context.category !== expected.category || model.context.factor !== expected.factor ||
+      !['united states','us','usa','u.s.','u.s','america'].includes(model.context.focus?.toLowerCase()) ||
+      model.source.profile_id !== expected.profile || model.change_unit !== expected.unit ||
+      model.source.metric === 'VIXCLS' && model.baseline.value <= 0 || model.source.metric === 'MORTGAGE30US' && (model.baseline.value < 0 || days < 7)) return null;
+  const age=Math.floor(origin/86400000)-period(model.baseline.observation_at)/86400000;
+  if (!Number.isInteger(model.baseline_age_days) || model.baseline_age_days !== age ||
+      !Number.isInteger(model.effective_duration_days) || model.effective_duration_days !== days+age ||
+      age < 0 || age > (model.source.metric === 'VIXCLS' ? 7 : 21)) return null;
+  if (!Array.isArray(model.scenarios) || model.scenarios.length < 2 || model.scenarios.length > 100 ||
+      model.scenarios.some(row => !object(row) || ['id','title','resolution_rule'].some(key => !text(row[key])))) return null;
+  const ids=model.scenarios.map(row => row.id), cuts=model.threshold_cuts;
+  if (new Set(ids).size !== ids.length || !Array.isArray(cuts) || cuts.length !== ids.length-1 ||
+      cuts.some((value,index) => !finite(value) || index > 0 && value <= cuts[index-1]) ||
+      JSON.stringify(cuts) !== JSON.stringify(expected.cuts)) return null;
+  if (model.scenarios.some((row,index) => row.lower_bound !== (index ? cuts[index-1] : null) ||
+      row.upper_bound !== (index === ids.length-1 ? null : cuts[index]))) return null;
+  for (const map of [model.probabilities,model.intervals,model.training_counts,model.holdout_counts]) {
+    if (!object(map) || Object.keys(map).length !== ids.length || ids.some(id => !Object.hasOwn(map,id))) return null;
+  }
+  const denominator=model.training_sample_count+ids.length/2;
+  for (const id of ids) {
+    const probability=model.probabilities[id], interval=model.intervals[id];
+    if (!finite(probability) || probability < 0 || probability > 1 || !Array.isArray(interval) || interval.length !== 2 ||
+        interval.some(value => !finite(value)) || !(0 <= interval[0] && interval[0] <= probability && probability <= interval[1] && interval[1] <= 1)) return null;
+    for (const [counts,n] of [[model.training_counts,model.training_sample_count],[model.holdout_counts,model.holdout_sample_count]]) {
+      if (!Number.isInteger(counts[id]) || counts[id] < 0 || counts[id] > n) return null;
+    }
+    if (Math.abs(probability-(model.training_counts[id]+.5)/denominator) > 1e-8) return null;
+  }
+  if (Math.abs(ids.reduce((sum,id) => sum+model.probabilities[id],0)-1) > 1e-7 ||
+      ids.reduce((sum,id) => sum+model.training_counts[id],0) !== model.training_sample_count ||
+      ids.reduce((sum,id) => sum+model.holdout_counts[id],0) !== model.holdout_sample_count) return null;
+  return model;
+}
+
 export function comparisonRows(model, sort='definition') {
   if (!model) return [];
   const highest = Math.max(...Object.values(model.probabilities));
