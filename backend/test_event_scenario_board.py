@@ -11,7 +11,7 @@ class ScenarioBoardTests(unittest.TestCase):
   self.assertTrue(all(x['probability'] is None for x in r['ranked_scenarios']))
   self.assertTrue(any(x['experimental_probability'] for x in r['ranked_scenarios']))
   self.assertTrue(all(not x['experimental_probability'] or not x['experimental_probability']['calibrated'] for x in r['ranked_scenarios']))
-  self.assertEqual(r['ranking_metric'],'NORMALIZED_EXPERIMENTAL_SCENARIO_SHARE')
+  self.assertEqual(r['ranking_metric'],'POSITIVE_NET_EVIDENCE_SCENARIO_SHARE')
   self.assertTrue(any(x['evidence_score'] is not None for x in r['ranked_scenarios']))
   self.assertTrue(r['hypotheses_overlap'])
   self.assertEqual(r['scenario_distribution']['status'],'NORMALIZED_EXPERIMENTAL_UNCALIBRATED')
@@ -51,7 +51,7 @@ class ScenarioBoardTests(unittest.TestCase):
   a=board.candidates(good,'GDP growth','World','30 days')
   b=board.candidates(good+contrary,'GDP growth','World','30 days')
   get=lambda result:next(x for x in result['ranked_scenarios'] if x['id']=='gradual_improvement')
-  self.assertGreater(get(a)['scenario_share_percent'],get(b)['scenario_share_percent'])
+  self.assertGreater(get(a)['support_index'],get(b)['support_index'])
 
  def test_no_evidence_never_manufactures_a_100_percent_forecast(self):
   items=[{'id':'a','experimental_probability':None,'horizon_eligible':True},
