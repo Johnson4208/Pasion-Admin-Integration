@@ -41,6 +41,27 @@ class LiveEventTests(unittest.TestCase):
   with patch.object(e.event_feed_sources,'retrieve',side_effect=e.event_feed_sources.FeedError('NEWS_PROVIDER_UNREACHABLE')):
    with self.assertRaises(e.Unavailable):e.analyze('Energy','Oil supply')
 
+ def test_direct_bls_inflation_has_us_scope_without_us_in_title(self):
+  row={'title':'Consumer Price Index rises in September','description':'Consumer prices continue to rise',
+   'url':'https://www.bls.gov/news.release/cpi.htm','source':'U.S. Bureau of Labor Statistics',
+   'published_at':(self.now-timedelta(days=1)).isoformat(),
+   'provider':'BLS CPI','source_direct':True,'publisher_domain':'www.bls.gov',
+   'source_tier':'PRIMARY_OFFICIAL_UNVERIFIED_CLAIM'}
+  with patch.object(e.event_feed_sources,'retrieve',return_value=([row],{'feed_successes':1,'requests':1})):
+   result=e.analyze('Economy','Inflation','United States','30 days',self.now)
+  self.assertEqual(result['items'][0]['source_verification'],'FIRST_PARTY_PUBLICATION')
+  self.assertEqual(result['items'][0]['geographic_relation'],'DIRECT_SCOPE')
+  self.assertEqual(result['scope_source_count'],1)
+
+ def test_indexed_article_cannot_spoof_direct_government_source(self):
+  row={'title':'Consumer Price Index rises in September','description':'US inflation rose',
+   'url':'https://news.google.com/rss/articles/abc','source':'U.S. Bureau of Labor Statistics',
+   'published_at':(self.now-timedelta(days=1)).isoformat(),
+   'provider':'Google News official-site discovery'}
+  with patch.object(e.event_feed_sources,'retrieve',return_value=([row],{'feed_successes':1,'requests':1})):
+   result=e.analyze('Economy','Inflation','United States','30 days',self.now)
+  self.assertEqual(result['items'][0]['source_verification'],'INDEXED_OR_AGGREGATED_UNVERIFIED')
+
  def test_us_inflation_is_external_context_for_vietnam(self):
   row=self.story('US inflation rises after Federal Reserve statement')
   row['title']='US inflation rises after Federal Reserve statement'
