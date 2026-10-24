@@ -63,11 +63,11 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
   const old=document.body.style.overflow;document.body.style.overflow='hidden';
   return()=>{window.removeEventListener('keydown',onKey);document.body.style.overflow=old};
  },[evidenceOpen]);
- const ready=result?.status==='EVIDENCE_AVAILABLE';
+ const ready=!!result?.items?.length && ['EVIDENCE_AVAILABLE','FORECAST_AVAILABLE'].includes(result.status);
  const ranked=result?.dynamic_scenarios?.ranked_scenarios||[];
  const oldRanked=previousResult?.dynamic_scenarios?.ranked_scenarios||[];
  const probabilityAllowed=Boolean(result?.bayesian_forecast?.status==='CALIBRATED_MODEL_ELIGIBLE');
- const noEligible=!!result&&!loading&&(!result.source_count||result.status==='UNAVAILABLE');
+ const noEligible=!!result&&!loading&&!result.items?.some(item => !['EXTERNAL_CONTEXT','UNVERIFIED_SCOPE'].includes(item.geographic_relation));
  function changeTerm(value){setTerm(value);setHorizon(value==='short'?'30 days':'180 days');setResult(null);setError('');}
  function changeCategory(value){setCategory(value);setFactor(categories[value][0]);setResult(null);}
  async function runAnalysis(){
