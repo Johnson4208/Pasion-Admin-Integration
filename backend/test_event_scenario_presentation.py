@@ -34,14 +34,27 @@ class DisplayTests(unittest.TestCase):
  def test_only_news_fallback_when_no_valid_model(self):
   result={'scenario_forecast':event_forecasts.unavailable({'category':'Geopolitics','factor':'Conflict risk',
         'focus':'Vietnam','horizon':'30 days','basis':'END_STATE'}),
-    'dynamic_scenarios':{'ranked_scenarios':[{'id':'first','scenario_share_percent':100.}],
+    'dynamic_scenarios':{'ranked_scenarios':[
+        {'id':'first','scenario_share_percent':60.},
+        {'id':'second','scenario_share_percent':40.},
+        *[{'id':'extra'+str(i),'scenario_share_percent':0.} for i in range(8)]],
                          'scenario_distribution':{'status':'NORMALIZED_EXPERIMENTAL_UNCALIBRATED',
-                         'total_percent':100.,'quality':'LIMITED','estimated_scenario_count':1}}}
+                         'total_percent':100.,'quality':'LIMITED','estimated_scenario_count':2}}}
   view=presentation.display(result)
   self.assertEqual(view['type'],'RESEARCH_SHARE')
   self.assertEqual(view['confidence'],'LIMITED')
   self.assertEqual(view['total_percent'],100.)
   self.assertNotIn('outcome_probability',view['rows'][0])
+
+ def test_defense_in_depth_rejects_a_fake_monopoly(self):
+  result={'scenario_forecast':{},'dynamic_scenarios':{
+    'ranked_scenarios':[{'id':'a','scenario_share_percent':100.}]
+     + [{'id':str(i),'scenario_share_percent':0.} for i in range(9)],
+    'scenario_distribution':{'status':'NORMALIZED_EXPERIMENTAL_UNCALIBRATED',
+      'total_percent':100.,'estimated_scenario_count':1}}}
+  view=presentation.display(result)
+  self.assertEqual(view['status'],'NOT_CALCULATED')
+  self.assertIsNone(view['total_percent'])
 
  def test_missing_evidence_does_not_manufacture_distribution(self):
   view=presentation.display({'scenario_forecast':{},'dynamic_scenarios':{}})
