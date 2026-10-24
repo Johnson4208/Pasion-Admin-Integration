@@ -27,19 +27,31 @@ class ScenarioBoardTests(unittest.TestCase):
   self.assertEqual(r['scenario_distribution']['status'],'NOT_CALCULATED')
   self.assertEqual(sum(x['scenario_share_percent'] for x in r['ranked_scenarios']),0.0)
 
- def test_largest_remainder_rounding_sums_100_percent_with_missing_scenarios(self):
-  items=[{'id':'a','experimental_probability':{'probability_estimate':.569},'horizon_eligible':True},
-         {'id':'b','experimental_probability':{'probability_estimate':.418},'horizon_eligible':True},
-         {'id':'c','experimental_probability':{'probability_estimate':.373},'horizon_eligible':True},
-         {'id':'d','experimental_probability':None,'horizon_eligible':True},
-         {'id':'e','experimental_probability':{'probability_estimate':.8},'horizon_eligible':False}]
+ def test_net_support_only_not_prior_creates_shares(self):
+  items=[
+   {'id':'a','support_weight':.569,'opposition_weight':0.,'supporting_source_count':2,'horizon_eligible':True},
+   {'id':'b','support_weight':.418,'opposition_weight':.1,'supporting_source_count':2,'horizon_eligible':True},
+   {'id':'c','support_weight':.373,'opposition_weight':0.,'supporting_source_count':1,'horizon_eligible':True},
+   {'id':'d','support_weight':0.,'opposition_weight':.8,'supporting_source_count':0,'horizon_eligible':True},
+   {'id':'e','support_weight':.8,'opposition_weight':0.,'supporting_source_count':2,'horizon_eligible':False},
+   {'id':'f','support_weight':.1,'opposition_weight':.8,'supporting_source_count':1,'horizon_eligible':True},
+  ]
   state=board._normalize_scenario_shares(items)
   self.assertEqual(state['total_percent'],100.0)
-  self.assertEqual(round(sum(x['scenario_share_percent'] for x in items),1),100.0)
-  self.assertEqual(items[3]['scenario_share_percent'],0.0)
-  self.assertEqual(items[4]['scenario_share_percent'],0.0)
+  self.assertAlmostEqual(sum(x['scenario_share_percent'] for x in items),100.0)
+  self.assertEqual(items[3]['scenario_share_percent'],0.)
+  self.assertEqual(items[4]['scenario_share_percent'],0.)
+  self.assertEqual(items[5]['scenario_share_percent'],0.)
   self.assertEqual(items[3]['scenario_share_status'],'NOT_CALCULATED')
   self.assertGreater(items[0]['scenario_share_percent'],items[1]['scenario_share_percent'])
+
+ def test_contradictions_reduce_ranking_share(self):
+  good=[self.row('good'+str(i),'GDP improves gradually',1) for i in range(3)]
+  contrary=[self.row('bad'+str(i),'GDP contracts',-1) for i in range(2)]
+  a=board.candidates(good,'GDP growth','World','30 days')
+  b=board.candidates(good+contrary,'GDP growth','World','30 days')
+  get=lambda result:next(x for x in result['ranked_scenarios'] if x['id']=='gradual_improvement')
+  self.assertGreater(get(a)['scenario_share_percent'],get(b)['scenario_share_percent'])
 
  def test_no_evidence_never_manufactures_a_100_percent_forecast(self):
   items=[{'id':'a','experimental_probability':None,'horizon_eligible':True},
