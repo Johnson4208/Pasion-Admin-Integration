@@ -42,13 +42,32 @@ test('restored probability ranking shows ten pathways and bounded research label
  await expect(page.locator('.events-ranked-item')).toHaveCount(10);
  await expect(page.locator('.events-rank-value').first()).toHaveText('38.3%*');
  await expect(page.locator('.events-rank-value').nth(1)).toHaveText('33.5%*');
- await expect(page.locator('.events-ranked-note')).toContainText('NOT a validated probability');
+ await expect(page.locator('.events-ranked-note')).toContainText('not validated event probabilities');
  await expect(page.locator('.events-distribution-total')).toContainText('100.0%');
  const shares=await page.locator('.events-rank-value').allTextContents();
  expect(shares.reduce((total,share)=>total+Number.parseFloat(share),0)).toBeCloseTo(100,1);
  await expect(page.locator('.events-rank-value').nth(9)).toHaveText('0%');
- await expect(page.locator('.events-ranked-note')).toContainText('missing evidence');
+ await expect(page.locator('.events-ranked-note')).toContainText('relative allocation');
  await expect(page.getByRole('heading',{name:'Ranked scenario pathways'})).toBeVisible();
+});
+test('reviewed historical ten-outcome family takes precedence over news shares',async({page})=>{
+ const outcomes=Array.from({length:10},(_,i)=>({
+   id:'historical-'+i,rank:i+1,title:'Reviewed outcome '+(i+1),
+   definition:'Historical resolution rule '+(i+1),scenario_share_percent:10,
+   scenario_share_status:'HISTORICAL_REFERENCE_ESTIMATE',sources:[],supporting_source_count:0
+ }));
+ const historical={type:'HISTORICAL_REFERENCE',status:'HISTORICAL_REFERENCE_ESTIMATE',
+   rows:outcomes,total_percent:100,sample_size:250,holdout_sample_count:120};
+ await page.route('**/api/research/events/live?*',r=>r.fulfill({json:report(base,{
+   status:'FORECAST_AVAILABLE',items:[],source_count:0,scenario_presentation:historical
+ })}));
+ await start(page);await page.getByRole('button',{name:/^Analyze/}).click();
+ await expect(page.locator('.events-ranked-item')).toHaveCount(10);
+ await expect(page.locator('.events-model-flag')).toHaveText('Historical baseline');
+ await expect(page.locator('.events-rank-value').first()).toHaveText('10.0%');
+ await expect(page.locator('.events-distribution-total')).toContainText('100.0%');
+ await expect(page.locator('.events-ranked-item').first().getByRole('button',{name:/Evidence/})).toHaveCount(0);
+ await expect(page.locator('.events-ranked-note')).toContainText('not a guarantee');
 });
 test('loading overlays the prior results and clears after evidence returns',async({page})=>{
  let release;let count=0;
