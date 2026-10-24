@@ -11,12 +11,14 @@ function report(query=base,extras={}){
   definition:'Conditional economic development '+(i+1),rank:i+1,
   qualifier_fit:'BOTH',status:i<3?'EXPERIMENTAL_ESTIMATE':'PENDING_EVIDENCE',supporting_source_count:i<3?2:0,
   sources:i<3?items:[],support_index:i<3?.6-i*.08:null,
+  scenario_share_percent:i<3?[38.3,33.5,28.2][i]:0,
+  scenario_share_status:i<3?'NORMALIZED_EXPERIMENTAL_UNCALIBRATED':'NOT_CALCULATED',
   experimental_probability:i<3?{status:'EXPERIMENTAL_UNCALIBRATED',probability_estimate:[.732,.641,.538][i],
     prior_sensitivity_range:[.31,.86],calibrated:false}:null
  }));
  return {version:1,status:'EVIDENCE_AVAILABLE',...query,generated_at:'2026-10-24T03:00:00Z',
   source_count:2,items,coverage:{requests:5,feed_successes:3},
-  dynamic_scenarios:{ranked_scenarios:rows},bayesian_forecast:{status:'UNAVAILABLE'},
+  dynamic_scenarios:{ranked_scenarios:rows,scenario_distribution:{status:'NORMALIZED_EXPERIMENTAL_UNCALIBRATED',total_percent:100,estimated_scenario_count:3}},bayesian_forecast:{status:'UNAVAILABLE'},
   probability_status:'EXPERIMENTAL_UNCALIBRATED',...extras};
 }
 async function start(page){
@@ -38,11 +40,14 @@ test('restored probability ranking shows ten pathways and bounded research label
  await page.route('**/api/research/events/live?*',r=>r.fulfill({json:report()}));
  await start(page);await page.getByRole('button',{name:/^Analyze/}).click();
  await expect(page.locator('.events-ranked-item')).toHaveCount(10);
- await expect(page.locator('.events-rank-value').first()).toHaveText('73.2%*');
- await expect(page.locator('.events-rank-value').nth(1)).toHaveText('64.1%*');
- await expect(page.locator('.events-ranked-note')).toContainText('NOT calibrated');
+ await expect(page.locator('.events-rank-value').first()).toHaveText('38.3%*');
+ await expect(page.locator('.events-rank-value').nth(1)).toHaveText('33.5%*');
+ await expect(page.locator('.events-ranked-note')).toContainText('NOT a validated probability');
+ await expect(page.locator('.events-distribution-total')).toContainText('100.0%');
+ const shares=await page.locator('.events-rank-value').allTextContents();
+ expect(shares.reduce((total,share)=>total+Number.parseFloat(share),0)).toBeCloseTo(100,1);
  await expect(page.locator('.events-rank-value').nth(9)).toHaveText('0%');
- await expect(page.locator('.events-ranked-note')).toContainText('display placeholder');
+ await expect(page.locator('.events-ranked-note')).toContainText('missing evidence');
  await expect(page.getByRole('heading',{name:'Ranked scenario pathways'})).toBeVisible();
 });
 test('loading overlays the prior results and clears after evidence returns',async({page})=>{
@@ -54,13 +59,13 @@ test('loading overlays the prior results and clears after evidence returns',asyn
    await r.fulfill({json:report()});
  });
  await start(page);await page.getByRole('button',{name:/^Analyze/}).click();
- await expect(page.locator('.events-rank-value').first()).toHaveText('73.2%*');
+ await expect(page.locator('.events-rank-value').first()).toHaveText('38.3%*');
  await page.getByRole('button',{name:/^Analyze/}).click();
  await expect(page.locator('.events-loading-spinner')).toBeVisible();
  await expect(page.locator('.events-ranking-shell')).toHaveAttribute('aria-busy','true');
  release();
  await expect(page.locator('.events-loading-spinner')).toHaveCount(0);
- await expect(page.locator('.events-rank-value').first()).toHaveText('73.2%*');
+ await expect(page.locator('.events-rank-value').first()).toHaveText('38.3%*');
 });
 test('evidence opens as overlay rather than a long visible article list',async({page})=>{
  await page.route('**/api/research/events/live?*',r=>r.fulfill({json:report()}));
