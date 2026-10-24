@@ -20,6 +20,13 @@ class LiveEventTests(unittest.TestCase):
   self.assertAlmostEqual(sum(x['share_pct'] for x in r['outcomes']),100)
   self.assertFalse(r['model']['calibrated_probability'])
   self.assertIsNone(r['independent_source_count'])
+ def test_unknown_reporting_is_not_counted_as_stable(self):
+  with patch.object(e.event_feed_sources,'retrieve',return_value=([self.story('Oil supply report released')],{'feed_successes':1})):
+   result=e.analyze('Energy','Oil supply','Vietnam','30 days',self.now)
+  self.assertEqual(result['outcomes'],[])
+  self.assertEqual(result['unclassified_source_count'],1)
+  self.assertTrue(all(row['experimental_probability'] is None for row in result['dynamic_scenarios']['ranked_scenarios']))
+
  def test_missing_news_has_no_arbitrary_equal_baseline(self):
   with patch.object(e.event_feed_sources,'retrieve',return_value=([],{'region':'Vietnam','feed_successes':1})):
    r=e.analyze('Energy','Oil supply','Vietnam','30 days',self.now)

@@ -6,14 +6,14 @@ evidence of stability. All matching uses normalized words, never substrings.
 import re
 from event_topic_matcher import normalize, ANCHORS
 
-VERSION = 'event-direction-v1'
+VERSION = 'event-direction-v2'
 UP = r'\b(?:rises?|rose|rising|increas(?:e|es|ed|ing)|surges?|surging|accelerat(?:e|es|ed|ing)|higher|tang|leo thang)\b'
 DOWN = r'\b(?:falls?|fell|falling|declin(?:e|es|ed|ing)|decreas(?:e|es|ed|ing)|drops?|dropping|slows?|slowing|lower|giam|ha nhiet)\b'
 IMPROVE = r'\b(?:improv(?:e|es|ed|ing|ement)|recover(?:s|ed|ing|y)?|rebounds?|expand(?:s|ed|ing)?|strengthen(?:s|ed|ing)?|phuc hoi|cai thien|mo rong)\b'
 WEAKEN = r'\b(?:weaken(?:s|ed|ing)?|contract(?:s|ed|ing|ion)?|recession|shortages?|disrupt(?:s|ed|ion|ions)?|suy yeu|suy giam|suy thoai|thieu hut|gian doan|dut gay)\b'
 NEUTRAL = r'\b(?:stable|steady|unchanged|flat|on hold|paus(?:e|es|ed)|on dinh|khong doi|di ngang|giu nguyen)\b'
 NEGATION = r'\b(?:not|no|never|without|unlikely|khong|chua)\b(?:\s+\w+){0,3}\s*$'
-CONDITIONAL = r'\b(?:could|might|may|potentially|co the|neu)\b'
+CONDITIONAL = r'\b(?:could|might|may|will|expected|forecast|projected|potentially|co the|du bao|du kien|neu)\b'
 RISK_FACTORS = {'Inflation', 'Energy prices', 'Healthcare costs', 'Mortgage rates',
                 'Equity volatility', 'Conflict risk', 'Cybersecurity', 'Sanctions'}
 ACTIVITY_FACTORS = {'GDP growth', 'Consumer demand', 'Household spending', 'Consumer confidence',
@@ -53,11 +53,16 @@ def inspect(title, description, factor):
                 (1, supportive + ('|' + extra_good if extra_good else '')),
                 (0, NEUTRAL)]
     matches, ignored = [], []
-    clauses = re.split(r'[.;!?]|\b(?:but|however|nhưng|nhung)\b', text, flags=re.I)
+    clauses = re.split(r'[.;!?]|\b(?:but|however|while|whereas|nhưng|nhung|trong khi)\b', text, flags=re.I)
     anchored = [c for c in clauses if any(re.search(r'\b' + re.escape(a) + r'\b', normalize(c)) for a in anchors)]
-    for raw in anchored or clauses:
-        clause = normalize(raw)
-        for sign, pattern in patterns:
+    # Do not borrow a direction from unrelated text when the topic is absent.
+    for raw in anchored if anchors else clauses:
+        # A calendar month is not a modal verb ("inflation rose in May").
+        clause = normalize(re.sub(r'\b(?:in|during|since|through|for) May\b', 'in month', raw))
+        local_patterns = patterns
+        if factor == 'Labor market' and re.search(r'\b(?:unemployment|jobless|layoffs|that nghiep)\b', clause):
+            local_patterns = [(-1, UP), (1, DOWN), (0, NEUTRAL)]
+        for sign, pattern in local_patterns:
             for match in re.finditer(pattern, clause):
                 prefix = clause[max(0, match.start() - 60):match.start()]
                 # "khong doi" explicitly means unchanged, not a negated claim.

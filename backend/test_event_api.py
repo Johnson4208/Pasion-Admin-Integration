@@ -43,7 +43,7 @@ class EventApiTests(unittest.TestCase):
         self.assertFalse(result['calibrated_probability'])
         self.assertEqual(result['items'][0]['direction'],-1)
         self.assertEqual(result['items'][0]['geographic_relation'],'DIRECT_SCOPE')
-        self.assertEqual(result['dynamic_scenarios']['ranking_metric'],'POSITIVE_NET_EVIDENCE_SCENARIO_SHARE')
+        self.assertEqual(result['dynamic_scenarios']['ranking_metric'],'SIGNED_EVIDENCE_BALANCE')
         self.assertEqual(result['dynamic_scenarios']['scenario_distribution']['status'],'WITHHELD_CONCENTRATED_EVIDENCE')
         self.assertIsNone(result['dynamic_scenarios']['scenario_distribution']['total_percent'])
         self.assertEqual(result['scenario_presentation']['type'],'UNAVAILABLE')

@@ -1,7 +1,7 @@
 """Transparent *experimental* binary scenario probability proxy.
 
-This is NOT the validated Bayesian forecasting engine. Since PASION currently
-has no historically estimated base rates or event-conditional likelihoods, this
+This is NOT the validated Bayesian forecasting engine. The generic news pathways lack
+historically estimated base rates and event-conditional likelihoods, so this
 module uses an EXPLICIT, uninformative assumed prior and a deterministic
 bounded headline-evidence log-odds update.
 
@@ -12,7 +12,7 @@ not established; a capped effective source count makes this conservative.
 """
 import math
 
-VERSION="event-probability-experimental-v1"
+VERSION="event-probability-experimental-v2"
 ASSUMED_PRIOR=.50
 MAX_EFFECTIVE_CLUSTERS=3
 LOG_ODDS_PER_UNIT=1.25
@@ -35,7 +35,7 @@ def _sigmoid(x):
 def estimate(sources,target,scenario_id):
     """Inputs are already filtered to unique, directly relevant story clusters.
 
-    'agreement' is lexical direction compatibility in [-1,1], *not* a measured
+    'agreement' is signed pathway evidence in [-1,1], *not* a measured
     likelihood ratio. We expose calculations and prior sensitivity instead
     of claiming reliability from model outputs. Never use future information.
     """
@@ -48,11 +48,19 @@ def estimate(sources,target,scenario_id):
         if not group or group in seen:continue
         seen.add(group)
         weight=max(0.,min(1.,_number(item.get("weight"))))
-        direction=max(-1.,min(1.,_number(item.get("direction"))))
         if weight<=0:continue
-        # Signed compatibility relative to the scenario's direction. Opposite
-        # language reduces odds rather than silently lending support.
-        agreement=max(-1.,min(1.,1.0-1.55*abs(direction-target)))
+        # Use the audited pathway contribution, not numeric distance from the
+        # pathway label. A positive report must never penalize a mild positive
+        # pathway (the old distance formula did exactly that).
+        role=item.get("evidence_role")
+        if role not in ("SUPPORTS", "CHALLENGES"):
+            continue
+        contribution=_number(item.get("contribution"))
+        if (role=="SUPPORTS" and contribution<=0) or (role=="CHALLENGES" and contribution>=0):
+            continue
+        if item.get("geographic_relation") in ("EXTERNAL_CONTEXT", "UNVERIFIED_SCOPE"):
+            continue
+        agreement=max(-1.,min(1.,contribution/max(1e-9,_number(item.get("weight")))))
         filtered.append((weight,agreement,group))
     if not filtered:return None
     # Group by story (not by syndicated article). Independence remains UNKNOWN;
@@ -78,7 +86,7 @@ def estimate(sources,target,scenario_id):
         "calibrated":False,
         "assumptions":{
             "prior":"Equal prior odds 50/50 for each nonexclusive event. NOT a historical base rate.",
-            "direction":"Headline and snippet word-count score; may misunderstand negation and causality.",
+            "direction":"Audited supporting/opposing pathway contributions from headline rules; interpretation may be wrong.",
             "evidence":"Only explicitly aligned story clusters; source independence unverified.",
             "update":"sigmoid(logit(prior) + 1.25 * weighted directional signal * min(3,sqrt(n))).",
         },

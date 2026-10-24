@@ -1,11 +1,21 @@
 """Historical forecasts and news shares must never be mislabeled as each other."""
 import unittest
+import json
+from pathlib import Path
 from datetime import datetime,timezone
 import event_forecasts
 import event_scenario_presentation as presentation
 from test_event_forecasts import specification,NOW
 
 class DisplayTests(unittest.TestCase):
+ def test_series_family_is_not_discarded_for_having_fewer_than_ten_outcomes(self):
+  model=json.loads((Path(__file__).resolve().parents[1]/'tests/fixtures/event-series-forecast.json').read_text())
+  view=presentation.historical_forecast(model)
+  self.assertEqual(view['type'],'SERIES_REFERENCE')
+  self.assertEqual(len(view['rows']),5)
+  self.assertEqual(view['confidence'],'RETROSPECTIVE_ONLY')
+  self.assertEqual(view['total_percent'],100.0)
+
  def test_reviewed_10_outcome_reference_has_100_percent_and_exact_names(self):
   spec=specification(size=10)
   artifact=event_forecasts.build(spec,'synthetic automated test',NOW)
@@ -24,10 +34,10 @@ class DisplayTests(unittest.TestCase):
   record=event_forecasts.estimate(model,model['context'],NOW)
   self.assertIsNone(presentation.historical_forecast(record))
 
- def test_invalid_or_small_family_never_claims_ten_model_outcomes(self):
+ def test_small_family_displays_exactly_its_outcomes_and_invalid_model_is_rejected(self):
   model=event_forecasts.build(specification(size=3),'synthetic automated test',NOW)
   record=event_forecasts.estimate(model,model['context'],NOW)
-  self.assertIsNone(presentation.historical_forecast(record))
+  self.assertEqual(len(presentation.historical_forecast(record)['rows']),3)
   record['validation']['status']='WITHHELD_HOLDOUT_CHECK_FAILED'
   self.assertIsNone(presentation.historical_forecast(record))
 

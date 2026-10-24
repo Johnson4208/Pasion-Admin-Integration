@@ -179,3 +179,31 @@ export function sourceUrl(value) {
     return url.protocol === 'https:' && !url.username && !url.password ? url.href : null;
   } catch { return null; }
 }
+
+// A sensitivity illustration is neither a historical frequency nor a calibrated
+// forecast. Old snapshots used a direction-distance bug; never display v1 odds.
+export function experimentalEstimate(scenario) {
+  const model = scenario?.experimental_probability;
+  const valid = p => typeof p === 'number' && Number.isFinite(p) && p >= 0 && p <= 1;
+  if (scenario?.horizon_eligible === false || model?.model_version !== 'event-probability-experimental-v2' ||
+      model.status !== 'EXPERIMENTAL_UNCALIBRATED' || model.calibrated !== false ||
+      model.scenario_id !== scenario.id || model.assumed_prior !== .5 ||
+      !Number.isInteger(model.evidence_cluster_count) || model.evidence_cluster_count < 1 ||
+      !valid(model.probability_estimate) || !Array.isArray(model.prior_sensitivity_range) ||
+      model.prior_sensitivity_range.length !== 2 || !model.prior_sensitivity_range.every(valid) ||
+      model.prior_sensitivity_range[0] > model.probability_estimate ||
+      model.prior_sensitivity_range[1] < model.probability_estimate) return null;
+  return model;
+}
+
+export function researchShareAvailable(result) {
+  const rows = result?.dynamic_scenarios?.ranked_scenarios;
+  const distribution = result?.dynamic_scenarios?.scenario_distribution;
+  if (distribution?.status !== 'NORMALIZED_EXPERIMENTAL_UNCALIBRATED' ||
+      !Array.isArray(rows) || rows.length !== 10 || new Set(rows.map(r=>r.id)).size !== rows.length ||
+      !result.items?.some(item=>['DIRECT_SCOPE','GLOBAL_SCOPE'].includes(item.geographic_relation))) return false;
+  const values = rows.map(r=>r.scenario_share_percent);
+  return values.every(v=>typeof v === 'number' && Number.isFinite(v) && v >= 0 && v < 90) &&
+    values.filter(v=>v>0).length >= 2 && Math.abs(values.reduce((a,b)=>a+b,0)-100) <= .05 &&
+    typeof distribution.total_percent === 'number' && Math.abs(distribution.total_percent-100) <= .05;
+}

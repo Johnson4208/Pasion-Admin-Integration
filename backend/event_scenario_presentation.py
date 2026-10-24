@@ -1,7 +1,7 @@
 """Choose what Pasion may call a scenario forecast.
 
-A reviewed, temporally held-out END_STATE reference family is the only source
-of outcome probabilities in this adapter. A news-weighted ten-pathway display
+Reviewed and explicitly research-only END_STATE historical families supply
+outcome estimates in this adapter. A news-weighted ten-pathway display
 is explicitly a separate research *share* and not an event forecast.
 
 Do not infer missing scenarios, rename fixed historical outcomes, or combine
@@ -9,7 +9,7 @@ marginal OCCURRENCE probabilities by normalizing them to 100%.
 """
 import math
 
-VERSION="event-scenario-presentation-v1"
+VERSION="event-scenario-presentation-v2"
 
 
 def _rounded_percentages(probabilities):
@@ -27,28 +27,30 @@ def _rounded_percentages(probabilities):
 
 
 def historical_forecast(model):
-    """Only display a complete, independently reviewed 10+ outcome family.
+    """Only display a complete, independently reviewed outcome family.
 
     A rate reference is not guaranteed prospective calibration. Exactly the
     reviewed outcomes are displayed; no generic overlapping event-path labels.
     """
     if not isinstance(model,dict):
         return None
-    if model.get("status")!="REFERENCE_ESTIMATE_AVAILABLE" or model.get("schema_version")!=1:
-        return None
-    if model.get("method")!="HISTORICAL_REFERENCE_CLASS_V1":
+    series = (model.get("schema_version")==2 and model.get("method")=="RETROSPECTIVE_SERIES_REFERENCE_V1"
+              and model.get("status")=="RESEARCH_ESTIMATE_AVAILABLE")
+    if not series and (model.get("status")!="REFERENCE_ESTIMATE_AVAILABLE" or model.get("schema_version")!=1
+                       or model.get("method")!="HISTORICAL_REFERENCE_CLASS_V1"):
         return None
     if not model.get("mutually_exclusive") or not model.get("exhaustive"):
         return None
     if model.get("context",{}).get("basis")!="END_STATE":
         return None
-    if model.get("validation",{}).get("status")!="PASSED_HOLDOUT_CHECK":
+    if model.get("validation",{}).get("status")!=("RETROSPECTIVE_HOLDOUT_ONLY" if series else "PASSED_HOLDOUT_CHECK"):
         return None
-    if any(type(model.get(k)) is not int or model[k]<100 for k in ("training_sample_count","holdout_sample_count")):
+    if any(type(model.get(k)) is not int or model[k]<minimum for k,minimum in
+           (("training_sample_count",20 if series else 100),("holdout_sample_count",10 if series else 100))):
         return None
     outcomes=model.get("scenarios")
     values=model.get("probabilities")
-    if not isinstance(outcomes,list) or len(outcomes)<10 or len(outcomes)>20 or not isinstance(values,dict):
+    if not isinstance(outcomes,list) or len(outcomes)<2 or len(outcomes)>100 or not isinstance(values,dict):
         return None
     ids=[r.get("id") for r in outcomes if isinstance(r,dict)]
     if len(ids)!=len(outcomes) or len(set(ids))!=len(ids) or set(ids)!=set(values):
@@ -77,15 +79,15 @@ def historical_forecast(model):
             "outcome_probability":values[ident]})
     return {
         "schema_version":1,"version":VERSION,
-        "type":"HISTORICAL_REFERENCE",
+        "type":"SERIES_REFERENCE" if series else "HISTORICAL_REFERENCE",
         "status":"HISTORICAL_REFERENCE_ESTIMATE",
         "model_version":model.get("model_version"),
-        "rows":rows,"total_percent":sum(rounded.values()),
+        "rows":rows,"total_percent":round(sum(rounded.values()),1),
         "sample_size":model["training_sample_count"],
         "holdout_sample_count":model["holdout_sample_count"],
         "label":"Historical estimate",
-        "confidence":"REVIEWED_HISTORICAL_REFERENCE",
-        "notice":"Historical reference rates passed a held-out check, but are not guaranteed to be calibrated forecasts for the future. News has NOT adjusted these estimates."
+        "confidence":"RETROSPECTIVE_ONLY" if series else "REVIEWED_HISTORICAL_REFERENCE",
+        "notice":"Historical outcome estimates, not guaranteed future probabilities. News has NOT adjusted these estimates. See model validation and uncertainty ranges."
     }
 
 

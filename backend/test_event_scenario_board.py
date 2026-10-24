@@ -11,7 +11,7 @@ class ScenarioBoardTests(unittest.TestCase):
   self.assertTrue(all(x['probability'] is None for x in r['ranked_scenarios']))
   self.assertTrue(any(x['experimental_probability'] for x in r['ranked_scenarios']))
   self.assertTrue(all(not x['experimental_probability'] or not x['experimental_probability']['calibrated'] for x in r['ranked_scenarios']))
-  self.assertEqual(r['ranking_metric'],'POSITIVE_NET_EVIDENCE_SCENARIO_SHARE')
+  self.assertEqual(r['ranking_metric'],'SIGNED_EVIDENCE_BALANCE')
   self.assertTrue(any(x['evidence_score'] is not None for x in r['ranked_scenarios']))
   self.assertTrue(r['hypotheses_overlap'])
   self.assertEqual(r['scenario_distribution']['status'],'WITHHELD_CONCENTRATED_EVIDENCE')

@@ -131,3 +131,30 @@ test('research-only snapshots with no articles preserve the whole distribution a
   assert.deepEqual(seriesForecast(restored),model);
   assert.equal(restored.evidence_status,'NOT_REQUESTED');
 });
+
+test('experimental display rejects legacy sign bug, malformed values and unsupported horizons', async () => {
+  const {experimentalEstimate}=await import('../src/eventScenarios.js');
+  const row={id:'mixed_recovery',horizon_eligible:true,experimental_probability:{
+    model_version:'event-probability-experimental-v2',scenario_id:'mixed_recovery',
+    status:'EXPERIMENTAL_UNCALIBRATED',calibrated:false,assumed_prior:.5,evidence_cluster_count:2,
+    probability_estimate:.7,prior_sensitivity_range:[.4,.9]}};
+  assert.equal(experimentalEstimate(row).probability_estimate,.7);
+  for (const value of [null,undefined,NaN,Infinity,-.1,1.1,'0.7']) {
+    assert.equal(experimentalEstimate({...row,experimental_probability:{...row.experimental_probability,probability_estimate:value}}),null);
+  }
+  assert.equal(experimentalEstimate({...row,horizon_eligible:false}),null);
+  assert.equal(experimentalEstimate({...row,experimental_probability:{...row.experimental_probability,model_version:'event-probability-experimental-v1'}}),null);
+  assert.equal(experimentalEstimate({...row,experimental_probability:{...row.experimental_probability,prior_sensitivity_range:[.8,.9]}}),null);
+});
+test('news share display fails closed for malformed or concentrated distributions',async()=>{
+ const {researchShareAvailable}=await import('../src/eventScenarios.js');
+ const result={items:[{geographic_relation:'DIRECT_SCOPE'}],dynamic_scenarios:{
+  ranked_scenarios:Array.from({length:10},(_,i)=>({id:String(i),scenario_share_percent:i<2?50:0})),
+  scenario_distribution:{status:'NORMALIZED_EXPERIMENTAL_UNCALIBRATED',total_percent:100}}};
+ assert.equal(researchShareAvailable(result),true);
+ result.dynamic_scenarios.ranked_scenarios[0].scenario_share_percent=100;
+ result.dynamic_scenarios.ranked_scenarios[1].scenario_share_percent=0;
+ assert.equal(researchShareAvailable(result),false);
+ result.dynamic_scenarios.ranked_scenarios[0].scenario_share_percent=NaN;
+ assert.equal(researchShareAvailable(result),false);
+});

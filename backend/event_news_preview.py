@@ -120,6 +120,12 @@ def _with_forecast(result, basis, now):
  result['outcome_history']=event_outcome_data.coverage(result['category'],result['factor'],result['focus'])
  result['scenario_forecast']=_forecast(result['category'],result['factor'],result['focus'],result['horizon'],basis,now)
  result['scenario_presentation']=event_scenario_presentation.display(result)
+ status=result['scenario_forecast'].get('status')
+ if status in ('REFERENCE_ESTIMATE_AVAILABLE','RESEARCH_ESTIMATE_AVAILABLE'):
+  result['probability_status']='HISTORICAL_REFERENCE_ESTIMATE' if status=='REFERENCE_ESTIMATE_AVAILABLE' else 'RETROSPECTIVE_RESEARCH_ESTIMATE'
+  result['horizon_info']['model_status']=result['probability_status']
+ elif any(row.get('experimental_probability') for row in result.get('dynamic_scenarios',{}).get('ranked_scenarios',[])):
+  result['probability_status']='EXPERIMENTAL_UNCALIBRATED'
  if result['scenario_forecast']['status'] in ('REFERENCE_ESTIMATE_AVAILABLE','RESEARCH_ESTIMATE_AVAILABLE') and result['status']=='UNAVAILABLE':
   result['status']='FORECAST_AVAILABLE'
  return result
@@ -196,17 +202,20 @@ def analyze(category,factor,focus='',horizon='30 days',now=None,basis='END_STATE
  # Source attribution is not a measurement of publisher independence.
  items.sort(key=lambda x:(-x['weight'],x['id']))
  eligible=[x for x in items if x['geographic_relation'] in ('GLOBAL_SCOPE','DIRECT_SCOPE')]
- total=sum(x['weight'] for x in eligible)
- bucket=[sum(x['weight'] for x in eligible if x['direction']<-.1),
-         sum(x['weight'] for x in eligible if abs(x['direction'])<=.1),
-         sum(x['weight'] for x in eligible if x['direction']>.1)]
+ # Unknown/conditional reporting is not evidence of an unchanged outcome.
+ classified=[x for x in eligible if x['direction_status'] in ('DIRECTIONAL','NEUTRAL','MIXED')]
+ total=sum(x['weight'] for x in classified)
+ bucket=[sum(x['weight'] for x in classified if x['direction']<-.1),
+         sum(x['weight'] for x in classified if abs(x['direction'])<=.1),
+         sum(x['weight'] for x in classified if x['direction']>.1)]
  shares=_round_shares([weight/total for weight in bucket]) if total else []
- counts=[sum(x['direction']<-.1 for x in eligible),sum(abs(x['direction'])<=.1 for x in eligible),sum(x['direction']>.1 for x in eligible)]
+ counts=[sum(x['direction']<-.1 for x in classified),sum(abs(x['direction'])<=.1 for x in classified),sum(x['direction']>.1 for x in classified)]
  result={'version':1,'status':'EVIDENCE_AVAILABLE' if items else 'UNAVAILABLE',
   'horizon_info':{**horizon_info,'model_status':'NO_VALIDATED_HORIZON_MODEL'},
   'category':category,'factor':factor,'focus':focus or 'World','horizon':horizon,
   'outcomes':[{'id':key,'share_pct':pct,'evidence_count':count} for key,pct,count in zip(('weakening','mixed','supportive'),shares,counts)],
   'items':items,'filter_diagnostics':diagnostics,'source_count':len(items),'scope_source_count':len(eligible),
+  'unclassified_source_count':len(eligible)-len(classified),
   'directional_source_count':sum(x['direction_status']=='DIRECTIONAL' for x in eligible),
   'independent_source_count':None,'coverage':coverage,'generated_at':now.isoformat(),
   'bayesian_forecast':event_bayesian.unavailable(),'calibrated_probability':False,

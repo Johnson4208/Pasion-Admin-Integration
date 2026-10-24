@@ -9,7 +9,7 @@ import re
 import event_horizons
 import event_experimental_probability
 
-VERSION="scenario-board-v2"
+VERSION="scenario-board-v3"
 
 _PATHS=(
  ("rapid_deterioration","Rapid deterioration","Risk or conditions worsen abruptly",-1.0,("rapid","shock","emergency","sudden","abrupt","spike"),"SHORT"),
@@ -168,7 +168,7 @@ def candidates(items,factor,focus,horizon):
   # Only in-scope directional evidence can move an explicit assumption-based prior.
   # Include CHALLENGES as well as SUPPORTS so contradictory news lowers the estimate.
   model_sources=[source for source in sources if source['evidence_role'] in ('SUPPORTS','CHALLENGES')
-                 and source.get('direction_status')=='DIRECTIONAL'
+                 and source.get('direction_status') in ('DIRECTIONAL','NEUTRAL')
                  and source.get('geographic_relation') not in ('EXTERNAL_CONTEXT','UNVERIFIED_SCOPE')]
   experimental=(event_experimental_probability.estimate(model_sources,target,ident)
                 if measured and model_sources else None)
@@ -182,13 +182,13 @@ def candidates(items,factor,focus,horizon):
    'probability_status':'EXPERIMENTAL_UNCALIBRATED' if experimental else 'UNAVAILABLE_NO_EVENT_EVIDENCE',
    'mutually_exclusive':False})
  allocation=_normalize_scenario_shares(scored,eligible)
- scored.sort(key=lambda s:(not s['horizon_eligible'],s['scenario_share_status']=='NOT_CALCULATED',
-   -s['scenario_share_percent'],s['id']))
+ scored.sort(key=lambda s:(not s['horizon_eligible'], s['support_index'] is None,
+   -(s['support_index'] if s['support_index'] is not None else -1),s['id']))
  for rank,scenario in enumerate(scored,1):scenario['rank']=rank
  return {'version':VERSION,'status':'RANKED_RESEARCH_HYPOTHESES','ranked_scenarios':scored,
   'scenario_count':len(scored),'eligible_scenario_count':sum(s['horizon_eligible'] for s in scored),
-  'timeframe':info['timeframe'],'ranking_metric':'POSITIVE_NET_EVIDENCE_SCENARIO_SHARE',
+  'timeframe':info['timeframe'],'ranking_metric':'SIGNED_EVIDENCE_BALANCE',
   'scenario_distribution':allocation,
   'calibrated_probability':False,'hypotheses_overlap':True,'horizon_model_status':'NO_VALIDATED_HORIZON_MODEL',
   'score_formula':'100 * (supporting weight - opposing weight) / all scope-eligible story weight',
-  'notice':'The displayed 100% distributes positive net evidence between supported pathways. These are research shares, not calibrated event probabilities.'}
+  'notice':'Pathways are ranked by signed evidence balance. Experimental estimates and normalized news shares are separate, uncalibrated quantities; overlapping pathways are not an outcome distribution.'}
