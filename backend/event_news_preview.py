@@ -176,13 +176,23 @@ def analyze(category,factor,focus='',horizon='30 days',now=None,basis='END_STATE
   query_relevance=match['relevance']
   signal=event_direction.inspect(row['title'],row.get('description',''),factor)
   relation=event_feed_sources.scope_relation(row['title'],row.get('description',''),focus,row.get('source',''))
+  # First-party BLS national-statistics RSS is US-scope evidence even if its
+  # CPI/Employment Situation headline omits the word "United States".
+  # Do not grant the same privilege to aggregator search or other publishers.
+  if (row.get('source_direct') is True and row.get('publisher_domain')=='www.bls.gov'
+      and event_feed_sources.geography(focus)[0]=='United States'
+      and factor in ('Inflation','Labor market')):
+   relation='DIRECT_SCOPE'
   # Relevance/recency are heuristic research weights, not truth confidence.
   freshness=math.exp(-age/10)
   provenance_multiplier=1.15 if row.get('source_tier')=='PRIMARY_OFFICIAL_UNVERIFIED_CLAIM' else 1.0
   weight=max(.02,query_relevance)*(.25+.75*freshness)*provenance_multiplier
   diagnostics['accepted']+=1
   items.append({**row,'topic_match_reason':match['reason'],'topic_matched_terms':match['matched'],'id':group,'cluster_id':group,'age_days':round(age,1),'relevance':round(query_relevance,3),
-    **signal,'geographic_relation':relation,'weight':round(weight,5),'provenance_multiplier':provenance_multiplier,'source_tier':row.get('source_tier','RSS_AGGREGATED_UNVERIFIED')})
+    **signal,'geographic_relation':relation,'weight':round(weight,5),'provenance_multiplier':provenance_multiplier,'source_tier':row.get('source_tier','RSS_AGGREGATED_UNVERIFIED'),
+    'source_verification':'FIRST_PARTY_PUBLICATION' if row.get('source_direct') is True
+        and row.get('publisher_domain') in ('www.bls.gov','www.eia.gov') else 'INDEXED_OR_AGGREGATED_UNVERIFIED',
+    'quality_note':'Primary publisher origin does not verify the interpretation of a reported event.'})
  # Source attribution is not a measurement of publisher independence.
  items.sort(key=lambda x:(-x['weight'],x['id']))
  eligible=[x for x in items if x['geographic_relation'] in ('GLOBAL_SCOPE','DIRECT_SCOPE')]
