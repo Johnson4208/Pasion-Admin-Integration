@@ -457,3 +457,11 @@
 .events-initial-value strong{color:#1d507d;font-size:23px;font-weight:750}
 .events-initial-value span{font-size:12px;color:#63809e;font-weight:650}
 .events-initial-summary p{margin:0;color:#63809e;font-size:12px;line-height:1.5}
+
+
+/* A single conditional distribution across the ranked research pathways. */
+.events-distribution-total{display:flex;gap:10px;align-items:center;justify-content:flex-end;border-top:1px solid #e1e9f2;padding:15px 3px 3px;flex-wrap:wrap;color:#355875}
+.events-distribution-total span{font-size:12px;font-weight:700}
+.events-distribution-total strong{font-size:20px;color:#194e84;font-variant-numeric:tabular-nums}
+.events-distribution-total small{font-size:11px;color:#728da5}
+@media(max-width:650px){.events-distribution-total{justify-content:flex-start}}
