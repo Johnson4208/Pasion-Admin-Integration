@@ -3,14 +3,15 @@ import event_scenario_board as board
 
 class ScenarioBoardTests(unittest.TestCase):
  def test_rank_ten_and_withhold_probabilities(self):
-  rows=[{'id':'one','title':'Supply disruptions and shortage persist','description':'Oil shortages escalate','weight':.7,'direction':-.8,'url':'https://example.org/news','source':'Example','published_at':'2026-10-21T00:00:00Z'},
-  {'id':'two','title':'Production recovers gradually','description':'Recovery improves supply','weight':.4,'direction':.7,'url':'https://example.org/news2','source':'Example','published_at':'2026-10-21T00:00:00Z'}]
+  rows=[{'id':'one','title':'Supply disruptions and shortage persist','description':'Oil shortages escalate','weight':.7,'direction':-.8,'direction_status':'DIRECTIONAL','geographic_relation':'DIRECT_SCOPE','url':'https://example.org/news','source':'Example','published_at':'2026-10-21T00:00:00Z'},
+  {'id':'two','title':'Production recovers gradually','description':'Recovery improves supply','weight':.4,'direction':.7,'direction_status':'DIRECTIONAL','geographic_relation':'DIRECT_SCOPE','url':'https://example.org/news2','source':'Example','published_at':'2026-10-21T00:00:00Z'}]
   r=board.candidates(rows,'Oil supply','Asia','30 days')
   self.assertEqual(len(r['ranked_scenarios']),10)
   self.assertEqual([x['rank'] for x in r['ranked_scenarios']],list(range(1,11)))
   self.assertTrue(all(x['probability'] is None for x in r['ranked_scenarios']))
-  self.assertTrue(all(x['experimental_probability'] is None for x in r['ranked_scenarios']))
-  self.assertEqual(r['ranking_metric'],'SIGNED_EVIDENCE_BALANCE')
+  self.assertTrue(any(x['experimental_probability'] for x in r['ranked_scenarios']))
+  self.assertTrue(all(not x['experimental_probability'] or not x['experimental_probability']['calibrated'] for x in r['ranked_scenarios']))
+  self.assertEqual(r['ranking_metric'],'EXPERIMENTAL_UNCALIBRATED_PROBABILITY_ESTIMATE')
   self.assertTrue(any(x['evidence_score'] is not None for x in r['ranked_scenarios']))
   self.assertTrue(r['hypotheses_overlap'])
   self.assertEqual(r['timeframe'],'SHORT_TERM')
