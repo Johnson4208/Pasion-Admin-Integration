@@ -14,9 +14,10 @@ class ScenarioBoardTests(unittest.TestCase):
   self.assertEqual(r['ranking_metric'],'POSITIVE_NET_EVIDENCE_SCENARIO_SHARE')
   self.assertTrue(any(x['evidence_score'] is not None for x in r['ranked_scenarios']))
   self.assertTrue(r['hypotheses_overlap'])
-  self.assertEqual(r['scenario_distribution']['status'],'NORMALIZED_EXPERIMENTAL_UNCALIBRATED')
-  self.assertEqual(sum(x['scenario_share_percent'] for x in r['ranked_scenarios']),100.0)
-  self.assertEqual(r['scenario_distribution']['total_percent'],100.0)
+  self.assertEqual(r['scenario_distribution']['status'],'WITHHELD_CONCENTRATED_EVIDENCE')
+  self.assertEqual(r['scenario_distribution']['reason_code'],'ONLY_ONE_NET_SUPPORTED_PATHWAY')
+  self.assertEqual(sum(x['scenario_share_percent'] for x in r['ranked_scenarios']),0.0)
+  self.assertIsNone(r['scenario_distribution']['total_percent'])
   self.assertEqual(r['timeframe'],'SHORT_TERM')
  def test_long_term_and_no_evidence(self):
   r=board.candidates([], 'Inflation','World','180 days')
@@ -52,6 +53,35 @@ class ScenarioBoardTests(unittest.TestCase):
   b=board.candidates(good+contrary,'GDP growth','World','30 days')
   get=lambda result:next(x for x in result['ranked_scenarios'] if x['id']=='gradual_improvement')
   self.assertGreater(get(a)['support_index'],get(b)['support_index'])
+
+ def test_one_pathway_100_percent_is_withheld_even_with_many_sources(self):
+  rows=[
+   {'id':'down','support_weight':47.,'opposition_weight':2.,'supporting_source_count':47,'horizon_eligible':True},
+   {'id':'up','support_weight':8.,'opposition_weight':20.,'supporting_source_count':8,'horizon_eligible':True},
+   {'id':'stable','support_weight':7.,'opposition_weight':20.,'supporting_source_count':7,'horizon_eligible':True},
+   {'id':'mixed','support_weight':4.,'opposition_weight':10.,'supporting_source_count':4,'horizon_eligible':True}
+  ]
+  dist=board._normalize_scenario_shares(rows)
+  self.assertEqual(dist['status'],'WITHHELD_CONCENTRATED_EVIDENCE')
+  self.assertEqual(dist['reason_code'],'ONLY_ONE_NET_SUPPORTED_PATHWAY')
+  self.assertEqual(dist['estimated_scenario_count'],1)
+  self.assertEqual([r['scenario_share_percent'] for r in rows],[0.,0.,0.,0.])
+  self.assertIsNone(dist['total_percent'])
+
+ def test_extremely_concentrated_two_way_news_not_claimed_95_percent_probability(self):
+  rows=[{'id':'a','support_weight':99.,'opposition_weight':0.,'supporting_source_count':30,'horizon_eligible':True},
+        {'id':'b','support_weight':1.,'opposition_weight':0.,'supporting_source_count':1,'horizon_eligible':True}]
+  dist=board._normalize_scenario_shares(rows)
+  self.assertEqual(dist['reason_code'],'EXTREME_EVIDENCE_CONCENTRATION')
+  self.assertIsNone(dist['total_percent'])
+
+ def test_genuine_multi_path_research_share_still_sums_100(self):
+  rows=[{'id':'a','support_weight':6.,'opposition_weight':1.,'supporting_source_count':4,'horizon_eligible':True},
+        {'id':'b','support_weight':4.,'opposition_weight':0.,'supporting_source_count':3,'horizon_eligible':True}]
+  dist=board._normalize_scenario_shares(rows)
+  self.assertEqual(dist['status'],'NORMALIZED_EXPERIMENTAL_UNCALIBRATED')
+  self.assertEqual(sum(r['scenario_share_percent'] for r in rows),100.0)
+  self.assertEqual(dist['total_percent'],100.0)
 
  def test_no_evidence_never_manufactures_a_100_percent_forecast(self):
   items=[{'id':'a','experimental_probability':None,'horizon_eligible':True},
