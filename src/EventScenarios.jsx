@@ -67,7 +67,8 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
  const presentation=result?.scenario_presentation;
  const historical=presentation?.type==='HISTORICAL_REFERENCE'&&presentation?.status==='HISTORICAL_REFERENCE_ESTIMATE';
  const scenarioDistribution=result?.dynamic_scenarios?.scenario_distribution;
- const researchAvailable=scenarioDistribution?.status==='NORMALIZED_EXPERIMENTAL_UNCALIBRATED';
+ const hasEligibleNews=(result?.items||[]).some(item=>['DIRECT_SCOPE','GLOBAL_SCOPE'].includes(item.geographic_relation));
+ const researchAvailable=scenarioDistribution?.status==='NORMALIZED_EXPERIMENTAL_UNCALIBRATED'&&hasEligibleNews;
  const normalizedReady=historical||researchAvailable;
  const ranked=historical?presentation.rows:(result?.dynamic_scenarios?.ranked_scenarios||[]);
  const oldRanked=previousResult?.dynamic_scenarios?.ranked_scenarios||[];
