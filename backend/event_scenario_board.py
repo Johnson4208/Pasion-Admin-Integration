@@ -44,6 +44,42 @@ def _number(value, default=0.):
  except (TypeError,ValueError,OverflowError):return default
 
 
+def _normalize_scenario_shares(scenarios):
+ """Allocate exactly 100.0% in integer tenths across *estimated* pathways.
+
+ Shares are conditional fractions of uncalibrated experimental weights, NOT
+ independently calibrated P(event). The hypotheses may overlap and therefore
+ these numbers do not establish a multinomial forecast distribution.
+ Missing evidence receives 0.0 displayed share and a NOT_CALCULATED status.
+ When no weights are supported, no 100% distribution is manufactured.
+ """
+ raw=[]
+ for row in scenarios:
+  estimate=row.get('experimental_probability')
+  value=_number(estimate.get('probability_estimate'),0.) if isinstance(estimate,dict) and row.get('horizon_eligible') else 0.
+  raw.append(max(0.,value))
+ total=sum(raw)
+ if total<=0.:
+  for row in scenarios:
+   row['scenario_share_percent']=0.0
+   row['scenario_share_status']='NOT_CALCULATED'
+  return {'status':'NOT_CALCULATED','total_percent':0.0,
+          'estimated_scenario_count':0,'basis':'NO_VALID_EVIDENCE'}
+ tenths=[1000*x/total for x in raw]
+ whole=[math.floor(x) for x in tenths]
+ remaining=1000-sum(whole)
+ order=sorted(range(len(scenarios)),key=lambda i:(-(tenths[i]-whole[i]),str(scenarios[i]['id'])))
+ for i in order[:remaining]:whole[i]+=1
+ for i,row in enumerate(scenarios):
+  row['scenario_share_percent']=whole[i]/10
+  row['scenario_share_status']='NORMALIZED_EXPERIMENTAL_UNCALIBRATED' if raw[i]>0 else 'NOT_CALCULATED'
+ return {'status':'NORMALIZED_EXPERIMENTAL_UNCALIBRATED',
+         'total_percent':sum(whole)/10,
+         'estimated_scenario_count':sum(x>0 for x in raw),
+         'basis':'SHARE_OF_EXPERIMENTAL_SCENARIO_WEIGHTS',
+         'assumption':'Conditional distribution across the listed candidate pathways; not a calibrated P(event). Overlapping pathways are not mutually exclusive.',
+         'normalization':'largest remainder rounding to 0.1 percentage point'}
+
 def candidates(items,factor,focus,horizon):
  """A signed evidence balance, never a probability or confidence estimate.
 
@@ -118,12 +154,14 @@ def candidates(items,factor,focus,horizon):
    'probability':None,'experimental_probability':experimental,
    'probability_status':'EXPERIMENTAL_UNCALIBRATED' if experimental else 'UNAVAILABLE_NO_EVENT_EVIDENCE',
    'mutually_exclusive':False})
- scored.sort(key=lambda s:(not s['horizon_eligible'],s['experimental_probability'] is None,
-   -s['experimental_probability']['probability_estimate'] if s['experimental_probability'] else 0,s['id']))
+ allocation=_normalize_scenario_shares(scored)
+ scored.sort(key=lambda s:(not s['horizon_eligible'],s['scenario_share_status']=='NOT_CALCULATED',
+   -s['scenario_share_percent'],s['id']))
  for rank,scenario in enumerate(scored,1):scenario['rank']=rank
  return {'version':VERSION,'status':'RANKED_RESEARCH_HYPOTHESES','ranked_scenarios':scored,
   'scenario_count':len(scored),'eligible_scenario_count':sum(s['horizon_eligible'] for s in scored),
-  'timeframe':info['timeframe'],'ranking_metric':'EXPERIMENTAL_UNCALIBRATED_PROBABILITY_ESTIMATE',
+  'timeframe':info['timeframe'],'ranking_metric':'NORMALIZED_EXPERIMENTAL_SCENARIO_SHARE',
+  'scenario_distribution':allocation,
   'calibrated_probability':False,'hypotheses_overlap':True,'horizon_model_status':'NO_VALIDATED_HORIZON_MODEL',
   'score_formula':'100 * (supporting weight - opposing weight) / all scope-eligible story weight',
-  'notice':'Experimental probability estimates use an assumed 50% prior and bounded lexical evidence; not calibrated event probabilities. Paths overlap and need not sum to 100%.'}
+  'notice':'Shares sum to 100% across estimated pathways only. They normalize heuristic weights and are NOT calibrated probabilities that these overlapping events will occur.'}
