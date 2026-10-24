@@ -11,9 +11,12 @@ class ScenarioBoardTests(unittest.TestCase):
   self.assertTrue(all(x['probability'] is None for x in r['ranked_scenarios']))
   self.assertTrue(any(x['experimental_probability'] for x in r['ranked_scenarios']))
   self.assertTrue(all(not x['experimental_probability'] or not x['experimental_probability']['calibrated'] for x in r['ranked_scenarios']))
-  self.assertEqual(r['ranking_metric'],'EXPERIMENTAL_UNCALIBRATED_PROBABILITY_ESTIMATE')
+  self.assertEqual(r['ranking_metric'],'NORMALIZED_EXPERIMENTAL_SCENARIO_SHARE')
   self.assertTrue(any(x['evidence_score'] is not None for x in r['ranked_scenarios']))
   self.assertTrue(r['hypotheses_overlap'])
+  self.assertEqual(r['scenario_distribution']['status'],'NORMALIZED_EXPERIMENTAL_UNCALIBRATED')
+  self.assertEqual(sum(x['scenario_share_percent'] for x in r['ranked_scenarios']),100.0)
+  self.assertEqual(r['scenario_distribution']['total_percent'],100.0)
   self.assertEqual(r['timeframe'],'SHORT_TERM')
  def test_long_term_and_no_evidence(self):
   r=board.candidates([], 'Inflation','World','180 days')
@@ -21,6 +24,30 @@ class ScenarioBoardTests(unittest.TestCase):
   self.assertTrue(all(x['support_index'] is None for x in r['ranked_scenarios']))
   self.assertTrue(all(x['status']=='PENDING_EVIDENCE' for x in r['ranked_scenarios'] if x['horizon_eligible']))
   self.assertTrue(all(x['experimental_probability'] is None for x in r['ranked_scenarios']))
+  self.assertEqual(r['scenario_distribution']['status'],'NOT_CALCULATED')
+  self.assertEqual(sum(x['scenario_share_percent'] for x in r['ranked_scenarios']),0.0)
+
+ def test_largest_remainder_rounding_sums_100_percent_with_missing_scenarios(self):
+  items=[{'id':'a','experimental_probability':{'probability_estimate':.569},'horizon_eligible':True},
+         {'id':'b','experimental_probability':{'probability_estimate':.418},'horizon_eligible':True},
+         {'id':'c','experimental_probability':{'probability_estimate':.373},'horizon_eligible':True},
+         {'id':'d','experimental_probability':None,'horizon_eligible':True},
+         {'id':'e','experimental_probability':{'probability_estimate':.8},'horizon_eligible':False}]
+  state=board._normalize_scenario_shares(items)
+  self.assertEqual(state['total_percent'],100.0)
+  self.assertEqual(round(sum(x['scenario_share_percent'] for x in items),1),100.0)
+  self.assertEqual(items[3]['scenario_share_percent'],0.0)
+  self.assertEqual(items[4]['scenario_share_percent'],0.0)
+  self.assertEqual(items[3]['scenario_share_status'],'NOT_CALCULATED')
+  self.assertGreater(items[0]['scenario_share_percent'],items[1]['scenario_share_percent'])
+
+ def test_no_evidence_never_manufactures_a_100_percent_forecast(self):
+  items=[{'id':'a','experimental_probability':None,'horizon_eligible':True},
+         {'id':'b','experimental_probability':None,'horizon_eligible':False}]
+  state=board._normalize_scenario_shares(items)
+  self.assertEqual(state['status'],'NOT_CALCULATED')
+  self.assertEqual(state['total_percent'],0.)
+  self.assertTrue(all(x['scenario_share_status']=='NOT_CALCULATED' for x in items))
 
  def row(self,ident,title,direction,**extra):
   return {'id':ident,'title':title,'description':'','weight':.7,'direction':direction,'direction_status':'DIRECTIONAL',
