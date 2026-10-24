@@ -126,7 +126,7 @@ export default function EventScenarios({storageKey='pasion-event-scenarios'}){
     </div>}</div>
    {!showExpanded&&<div className="events-initial-summary" role="status"><div className="events-initial-value"><strong>0%</strong><span>Not calculated</span></div><p>Choose your research settings and select <strong>Analyze</strong> to reveal the scenario ranking.</p></div>}
    {showExpanded&&<>
-   {noEligible&&<div className="events-empty-diagnostic" role="status"><strong>Not enough evidence to calculate</strong><p>Try another topic, region or period. Source information is available under Evidence when retrieved.</p></div>}
+   {noEligible&&<div className="events-empty-diagnostic" role="status"><strong>{scenarioDistribution?.status==='WITHHELD_CONCENTRATED_EVIDENCE'?'Evidence leans strongly one way — probability not validated':'Not enough evidence to calculate'}</strong><p>{scenarioDistribution?.status==='WITHHELD_CONCENTRATED_EVIDENCE'?'Available news favors one pathway, but converting those weights into 100% certainty would be misleading. Review the sources in Evidence.':'Try another topic, region or period. Source information is available under Evidence when retrieved.'}</p></div>}
    {!noEligible&&<div className="events-ranked-list">
     {(ranked.length?ranked:Array.from({length:10},(_,i)=>({id:'pending-'+i,rank:i+1,title:'Awaiting research',status:'PENDING_EVIDENCE',sources:[],support_index:null}))).map(sc=>{
       const old=oldRanked.find(x=>x.id===sc.id);
