@@ -183,10 +183,11 @@ class RegionalNewsTests(unittest.TestCase):
    return [{'title':'GDP update','provider':'Google News RSS'}]
   with patch.object(s,'_rss',side_effect=rss),patch.object(s,'_gdelt',return_value=[]) as gdelt:
    rows,coverage=s.retrieve('GDP growth output','Vietnam',factor='GDP growth',lookback_days=45)
-  self.assertEqual(coverage['requests'],5)
-  self.assertEqual(coverage['feed_successes'],4)
+  self.assertEqual(coverage['requests'],6)
+  self.assertEqual(coverage['feed_successes'],5)
   self.assertEqual(coverage['lookback_days'],45)
-  self.assertEqual(len(coverage['request_results']),5)
+  self.assertEqual(len(coverage['request_results']),6)
+  self.assertTrue(any(x['provider']=='Google News official-site discovery' for x in coverage['request_results']))
   self.assertEqual(len(rows),2)
   by_edition={row['edition']:row for row in coverage['request_results']}
   self.assertEqual(by_edition['GB']['status'],'FAILED')
